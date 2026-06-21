@@ -8,6 +8,7 @@ export class IceCave {
     this.group.name = 'IceCave';
     this.time = 0;
     this.crystals = [];
+    this.scannableTargets = [];
     this.random = createSeededRandom(17);
 
     this.collisionSystem = new CollisionSystem({
@@ -37,9 +38,20 @@ export class IceCave {
 
     for (const crystal of this.crystals) {
       const pulse = 0.5 + 0.5 * Math.sin(this.time * 2.4 + crystal.phase);
-      crystal.material.emissiveIntensity = 0.9 + pulse * 1.8;
+      const scanBoost = crystal.scanBoost ?? 0;
+      const scannedBoost = crystal.scanState === 'scanned' ? 0.9 : 0;
+      const scanningBoost = crystal.scanState === 'scanning' ? 0.7 : 0;
+
+      crystal.material.emissiveIntensity =
+        0.9 + pulse * 1.8 + scannedBoost + scanningBoost + scanBoost;
       crystal.mesh.scale.copy(crystal.baseScale).multiplyScalar(0.94 + pulse * 0.08);
-      crystal.light.intensity = 0.35 + pulse * 0.95;
+      crystal.light.intensity = 0.35 + pulse * 0.95 + scannedBoost * 0.45 + scanBoost * 0.38;
+
+      if (crystal.scanMarker) {
+        crystal.scanMarker.material.opacity =
+          crystal.scanState === 'scanned' ? 0.58 : 0.26 + pulse * 0.2;
+        crystal.scanMarker.rotation.z += delta * 0.55;
+      }
     }
   }
 
@@ -111,6 +123,13 @@ export class IceCave {
         metalness: 0.06,
         transparent: true,
         opacity: 0.64
+      }),
+      scannerMarker: new THREE.MeshBasicMaterial({
+        color: COLORS.scanner,
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
       })
     };
   }
@@ -450,8 +469,28 @@ export class IceCave {
       );
       this.group.add(crystal.mesh, crystal.light);
       this.crystals.push(crystal);
+      this.registerScannableTarget(crystal, index);
       this.registerCollider(crystal.mesh, 0.4);
     });
+  }
+
+  registerScannableTarget(crystal, index) {
+    crystal.scanState = 'unscanned';
+    crystal.scanBoost = 0;
+    crystal.mesh.userData.scanState = crystal.scanState;
+    crystal.mesh.userData.scannable = true;
+
+    const marker = new THREE.Mesh(
+      new THREE.TorusGeometry(0.9, 0.035, 8, 72),
+      this.materials.scannerMarker.clone()
+    );
+    marker.name = `ScannerTargetRing_${index + 1}`;
+    marker.position.set(crystal.mesh.position.x, 0.18, crystal.mesh.position.z);
+    marker.rotation.x = Math.PI / 2;
+    this.group.add(marker);
+
+    crystal.scanMarker = marker;
+    this.scannableTargets.push(crystal);
   }
 
   createCrystal(index, x, z, scale) {

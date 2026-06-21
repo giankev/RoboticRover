@@ -19,6 +19,10 @@ export class Renderer {
     container.appendChild(this.renderer.domElement);
   }
 
+  get domElement() {
+    return this.renderer.domElement;
+  }
+
   setAnimationLoop(callback) {
     this.renderer.setAnimationLoop(callback);
   }

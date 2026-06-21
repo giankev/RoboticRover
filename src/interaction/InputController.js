@@ -1,10 +1,28 @@
 export class InputController {
-  constructor({ onToggleHeadlights, onReset, onToggleCollisionDebug }) {
+  constructor({
+    onToggleHeadlights,
+    onReset,
+    onToggleCollisionDebug,
+    onCycleCamera,
+    onScan,
+    onArmIdle,
+    onArmReady,
+    onArmReach,
+    onToggleGripper,
+    onArmInspection
+  }) {
     this.keys = new Set();
     this.actionKeys = new Set();
     this.onToggleHeadlights = onToggleHeadlights;
     this.onReset = onReset;
     this.onToggleCollisionDebug = onToggleCollisionDebug;
+    this.onCycleCamera = onCycleCamera;
+    this.onScan = onScan;
+    this.onArmIdle = onArmIdle;
+    this.onArmReady = onArmReady;
+    this.onArmReach = onArmReach;
+    this.onToggleGripper = onToggleGripper;
+    this.onArmInspection = onArmInspection;
 
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
@@ -30,30 +48,14 @@ export class InputController {
       event.preventDefault();
     }
 
-    if (event.code === 'KeyF') {
-      if (this.actionKeys.has(event.code)) {
-        return;
-      }
-      this.actionKeys.add(event.code);
-      this.onToggleHeadlights();
-      return;
-    }
+    const action = this.getActionForCode(event.code);
 
-    if (event.code === 'KeyR') {
+    if (action) {
       if (this.actionKeys.has(event.code)) {
         return;
       }
       this.actionKeys.add(event.code);
-      this.onReset();
-      return;
-    }
-
-    if (event.code === 'KeyB') {
-      if (this.actionKeys.has(event.code)) {
-        return;
-      }
-      this.actionKeys.add(event.code);
-      this.onToggleCollisionDebug();
+      action();
       return;
     }
 
@@ -64,8 +66,38 @@ export class InputController {
     this.keys.delete(event.code);
     this.actionKeys.delete(event.code);
   }
+
+  getActionForCode(code) {
+    return {
+      KeyF: this.onToggleHeadlights,
+      KeyR: this.onReset,
+      KeyB: this.onToggleCollisionDebug,
+      KeyC: this.onCycleCamera,
+      KeyX: this.onScan,
+      Digit1: this.onArmIdle,
+      Digit2: this.onArmReady,
+      Digit3: this.onArmReach,
+      Digit4: this.onToggleGripper,
+      Digit5: this.onArmInspection
+    }[code];
+  }
 }
 
 function isControlKey(code) {
-  return ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyR', 'KeyB'].includes(code);
+  return [
+    'KeyW',
+    'KeyA',
+    'KeyS',
+    'KeyD',
+    'KeyF',
+    'KeyR',
+    'KeyB',
+    'KeyC',
+    'KeyX',
+    'Digit1',
+    'Digit2',
+    'Digit3',
+    'Digit4',
+    'Digit5'
+  ].includes(code);
 }

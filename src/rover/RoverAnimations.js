@@ -9,7 +9,7 @@ export class RoverAnimations {
     this.bodyBaseRotation = parts.body.rotation.clone();
   }
 
-  update(delta, signedSpeed, turnAmount) {
+  update(delta, signedSpeed, turnAmount, { scannerActive = false } = {}) {
     this.time += delta;
 
     const moving = Math.abs(signedSpeed) > 0.01 || Math.abs(turnAmount) > 0.01;
@@ -45,11 +45,13 @@ export class RoverAnimations {
         0.08
       );
 
-      this.parts.cameraMast.rotation.y = Math.sin(this.time * 1.05) * 0.075;
-      this.parts.cameraMast.rotation.x = Math.sin(this.time * 0.78) * 0.025;
+      if (!scannerActive) {
+        this.parts.cameraMast.rotation.y = Math.sin(this.time * 1.05) * 0.075;
+        this.parts.cameraMast.rotation.x = Math.sin(this.time * 0.78) * 0.025;
+      }
     }
 
-    if (moving) {
+    if (moving && !scannerActive) {
       this.parts.cameraMast.rotation.y = THREE.MathUtils.lerp(
         this.parts.cameraMast.rotation.y,
         0,

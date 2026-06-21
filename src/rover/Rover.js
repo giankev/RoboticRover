@@ -1,9 +1,12 @@
 import * as THREE from 'three';
+import * as TWEEN from '@tweenjs/tween.js';
 import { COLORS, ROVER } from '../config/constants.js';
 import { RoverAnimations } from './RoverAnimations.js';
 import { RoverArm, createArmMaterials } from './RoverArm.js';
 
 const FORWARD = new THREE.Vector3(0, 0, -1);
+const SCANNER_TARGET_LOCAL = new THREE.Vector3();
+const SCANNER_DIRECTION = new THREE.Vector3();
 
 export class Rover {
   constructor() {
@@ -19,6 +22,9 @@ export class Rover {
     this.headlightCurrentIntensity = 0;
     this.headlightTargetIntensity = 0;
     this.headlightFadeSpeed = 28;
+    this.scannerActive = false;
+    this.scannerFocusTween = null;
+    this.scannerFailureTween = null;
     this.wheels = [];
     this.headlights = [];
     this.headlightCones = [];
@@ -53,7 +59,10 @@ export class Rover {
       actualSpeed = this.applyMovement(this.moveStep, collisionSystem) * Math.sign(signedSpeed);
     }
 
-    this.animations.update(delta, actualSpeed, movement.turn);
+    this.animations.update(delta, actualSpeed, movement.turn, {
+      scannerActive: this.scannerActive
+    });
+    this.arm.update(delta);
     this.updateHeadlights(delta);
   }
 
@@ -103,6 +112,173 @@ export class Rover {
       ROVER.startPosition.z
     );
     this.root.rotation.set(0, 0, 0);
+  }
+
+  setArmIdle() {
+    this.arm.animateToIdle();
+  }
+
+  setArmReady() {
+    this.arm.animateToReady();
+  }
+
+  setArmReach() {
+    this.arm.animateToReach();
+  }
+
+  toggleGripper() {
+    if (this.arm.gripperOpen) {
+      this.arm.closeGripper();
+    } else {
+      this.arm.openGripper();
+    }
+  }
+
+  playArmInspectionSequence() {
+    this.arm.playInspectionSequence();
+  }
+
+  setScannerActive(active) {
+    this.scannerActive = active;
+  }
+
+  getScannerOrigin(target = new THREE.Vector3()) {
+    this.cameraLens.getWorldPosition(target);
+    return target;
+  }
+
+  animateScannerFocus(worldPosition, duration = 420) {
+    this.setScannerActive(true);
+
+    if (this.scannerFocusTween) {
+      this.scannerFocusTween.stop();
+    }
+
+    const rotations = this.getScannerFocusRotations(worldPosition);
+    const state = {
+      mastX: this.cameraMast.rotation.x,
+      mastY: this.cameraMast.rotation.y,
+      headX: this.cameraHead.rotation.x,
+      headY: this.cameraHead.rotation.y,
+      headZ: this.cameraHead.rotation.z
+    };
+
+    return new Promise((resolve) => {
+      this.scannerFocusTween = new TWEEN.Tween(state, true)
+        .to(rotations, duration)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .onUpdate(() => this.applyScannerFocusRotations(state))
+        .onComplete(() => {
+          this.applyScannerFocusRotations(rotations);
+          this.scannerFocusTween = null;
+          resolve();
+        })
+        .start();
+    });
+  }
+
+  resetScannerFocus(duration = 420) {
+    if (this.scannerFocusTween) {
+      this.scannerFocusTween.stop();
+    }
+
+    const state = {
+      mastX: this.cameraMast.rotation.x,
+      mastY: this.cameraMast.rotation.y,
+      headX: this.cameraHead.rotation.x,
+      headY: this.cameraHead.rotation.y,
+      headZ: this.cameraHead.rotation.z
+    };
+
+    return new Promise((resolve) => {
+      this.scannerFocusTween = new TWEEN.Tween(state, true)
+        .to({ mastX: 0, mastY: 0, headX: 0, headY: 0, headZ: 0 }, duration)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .onUpdate(() => this.applyScannerFocusRotations(state))
+        .onComplete(() => {
+          this.applyScannerFocusRotations({
+            mastX: 0,
+            mastY: 0,
+            headX: 0,
+            headY: 0,
+            headZ: 0
+          });
+          this.scannerFocusTween = null;
+          this.setScannerActive(false);
+          resolve();
+        })
+        .start();
+    });
+  }
+
+  playScannerFailure(duration = 720) {
+    this.setScannerActive(true);
+
+    if (this.scannerFailureTween) {
+      this.scannerFailureTween.stop();
+    }
+
+    const state = { progress: 0 };
+    const indicator = this.scannerIndicator.material;
+
+    return new Promise((resolve) => {
+      this.scannerFailureTween = new TWEEN.Tween(state, true)
+        .to({ progress: 1 }, duration)
+        .easing(TWEEN.Easing.Cubic.Out)
+        .onUpdate(() => {
+          const pulse = Math.abs(Math.sin(state.progress * Math.PI * 5));
+          this.cameraHead.rotation.z = Math.sin(state.progress * Math.PI * 9) * 0.12;
+          indicator.emissiveIntensity = pulse * 5;
+          this.scannerIndicator.scale.setScalar(1 + pulse * 0.55);
+        })
+        .onComplete(() => {
+          this.cameraHead.rotation.z = 0;
+          indicator.emissiveIntensity = 0;
+          this.scannerIndicator.scale.setScalar(1);
+          this.scannerFailureTween = null;
+          this.setScannerActive(false);
+          resolve();
+        })
+        .start();
+    });
+  }
+
+  getScannerFocusRotations(worldPosition) {
+    SCANNER_TARGET_LOCAL.copy(worldPosition);
+    this.root.worldToLocal(SCANNER_TARGET_LOCAL);
+
+    SCANNER_DIRECTION
+      .copy(SCANNER_TARGET_LOCAL)
+      .sub(this.cameraMast.position)
+      .sub(this.cameraHead.position);
+
+    const mastY = THREE.MathUtils.clamp(
+      Math.atan2(SCANNER_DIRECTION.x, -SCANNER_DIRECTION.z),
+      -1.15,
+      1.15
+    );
+    const horizontal = Math.hypot(SCANNER_DIRECTION.x, SCANNER_DIRECTION.z);
+    const headX = THREE.MathUtils.clamp(
+      Math.atan2(SCANNER_DIRECTION.y, horizontal),
+      -0.68,
+      0.55
+    );
+
+    return {
+      mastX: 0,
+      mastY,
+      headX,
+      headY: 0,
+      headZ: 0
+    };
+  }
+
+  applyScannerFocusRotations(rotations) {
+    this.cameraMast.rotation.x = rotations.mastX;
+    this.cameraMast.rotation.y = rotations.mastY;
+    this.cameraHead.rotation.x = rotations.headX;
+    this.cameraHead.rotation.y = rotations.headY;
+    this.cameraHead.rotation.z = rotations.headZ;
   }
 
   toggleHeadlights() {
@@ -292,24 +468,40 @@ export class Rover {
     mast.castShadow = true;
     cameraMast.add(mast);
 
-    const cameraHead = new THREE.Mesh(
+    const cameraHead = new THREE.Group();
+    cameraHead.name = 'CameraHead';
+    cameraHead.position.set(0, 1.02, -0.05);
+
+    const cameraHeadHousing = new THREE.Mesh(
       new THREE.BoxGeometry(0.48, 0.24, 0.28),
       this.materials.panel
     );
-    cameraHead.name = 'CameraHead';
-    cameraHead.position.set(0, 1.02, -0.05);
-    cameraHead.castShadow = true;
-    cameraHead.receiveShadow = true;
-    cameraMast.add(cameraHead);
+    cameraHeadHousing.name = 'CameraHeadHousing';
+    cameraHeadHousing.castShadow = true;
+    cameraHeadHousing.receiveShadow = true;
+    cameraHead.add(cameraHeadHousing);
 
     const lens = new THREE.Mesh(
       new THREE.CylinderGeometry(0.075, 0.075, 0.05, 18),
       this.materials.lens
     );
     lens.name = 'CameraLens';
-    lens.position.set(0, 1.02, -0.22);
+    lens.position.set(0, 0, -0.17);
     lens.rotation.x = Math.PI / 2;
-    cameraMast.add(lens);
+    cameraHead.add(lens);
+
+    const scannerIndicator = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 12, 8),
+      this.materials.scannerIndicator.clone()
+    );
+    scannerIndicator.name = 'ScannerStatusLED';
+    scannerIndicator.position.set(0.17, 0.06, -0.17);
+    cameraHead.add(scannerIndicator);
+
+    cameraMast.add(cameraHead);
+    this.cameraHead = cameraHead;
+    this.cameraLens = lens;
+    this.scannerIndicator = scannerIndicator;
 
     return cameraMast;
   }
@@ -481,6 +673,13 @@ export class Rover {
         color: 0x101a24,
         roughness: 0.22,
         metalness: 0.3
+      }),
+      scannerIndicator: new THREE.MeshStandardMaterial({
+        color: COLORS.scannerFailure,
+        emissive: COLORS.scannerFailure,
+        emissiveIntensity: 0,
+        roughness: 0.28,
+        metalness: 0.08
       }),
       headlightLens: new THREE.MeshStandardMaterial({
         color: 0x1a242d,

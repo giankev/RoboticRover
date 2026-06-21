@@ -35,6 +35,13 @@ export const ROVER = {
   headlightAngle: 0.48
 };
 
+export const SCANNER = {
+  range: 15,
+  scanDuration: 1800,
+  focusDuration: 420,
+  failureDuration: 720
+};
+
 export const COLORS = {
   background: 0x030813,
   ice: 0x9bddef,
@@ -48,5 +55,8 @@ export const COLORS = {
   amber: 0xffb347,
   crystalBlue: 0x61e8ff,
   crystalCyan: 0x8afff5,
-  headlight: 0xdff8ff
+  headlight: 0xdff8ff,
+  scanner: 0x77f7ff,
+  scannerScanned: 0xb7ff8a,
+  scannerFailure: 0xff5c5c
 };
