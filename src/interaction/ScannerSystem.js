@@ -17,6 +17,8 @@ export class ScannerSystem {
     this.activeTarget = null;
     this.effectState = {
       beamOpacity: 0,
+      endpointOpacity: 0,
+      endpointScale: 0.3,
       ringOpacity: 0,
       ringScale: 0.2,
       targetBoost: 0
@@ -61,7 +63,21 @@ export class ScannerSystem {
     this.pulseRing.rotation.x = Math.PI / 2;
     this.pulseRing.visible = false;
 
-    this.group.add(this.beam, this.pulseRing);
+    this.endpointGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 16, 8),
+      new THREE.MeshBasicMaterial({
+        color: COLORS.scanner,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: true,
+        blending: THREE.AdditiveBlending
+      })
+    );
+    this.endpointGlow.name = 'ScannerEndpointGlow';
+    this.endpointGlow.visible = false;
+
+    this.group.add(this.beam, this.pulseRing, this.endpointGlow);
   }
 
   activate() {
@@ -72,12 +88,12 @@ export class ScannerSystem {
     const nearest = this.findNearestUnscannedTarget();
 
     if (!nearest) {
-      this.playFailure('All targets scanned');
+      this.playFailure('All samples scanned.');
       return;
     }
 
     if (nearest.distance > this.interactionDistance) {
-      this.playFailure('Move closer to scan');
+      this.playFailure('Move closer to scan.');
       return;
     }
 
@@ -107,10 +123,12 @@ export class ScannerSystem {
   async playSuccessfulScan(target) {
     this.isScanning = true;
     this.activeTarget = target;
-    this.statusLabel = 'Aligning target';
+    this.statusLabel = 'Aligning sample.';
     this.getTargetPosition(target, this.targetPosition);
 
     this.effectState.beamOpacity = 0;
+    this.effectState.endpointOpacity = 0;
+    this.effectState.endpointScale = 0.3;
     this.effectState.ringOpacity = 0;
     this.effectState.ringScale = 0.2;
     this.effectState.targetBoost = 0;
@@ -118,7 +136,7 @@ export class ScannerSystem {
     try {
       await this.rover.alignToScanTarget(this.targetPosition, SCANNER.alignDuration);
       this.getTargetPosition(target, this.targetPosition);
-      this.statusLabel = 'Scanning';
+      this.statusLabel = 'Scanning sample.';
       this.setTargetState(target, 'scanning');
 
       await Promise.all([
@@ -128,13 +146,16 @@ export class ScannerSystem {
 
       this.beam.visible = true;
       this.pulseRing.visible = true;
+      this.endpointGlow.visible = true;
       this.positionEffects(target);
 
       await Promise.all([
         this.tweenEffect(
           {
-            beamOpacity: 0.14,
-            ringOpacity: 0.58,
+            beamOpacity: 0.2,
+            endpointOpacity: 0.62,
+            endpointScale: 1.18,
+            ringOpacity: 0.62,
             ringScale: 2.45,
             targetBoost: 1.7
           },
@@ -145,12 +166,12 @@ export class ScannerSystem {
       ]);
 
       this.setTargetState(target, 'scanned');
-      this.statusLabel = 'Target scanned';
+      this.statusLabel = 'Sample scanned.';
     } catch {
       if (target.scanState === 'scanning') {
         this.setTargetState(target, 'unscanned');
       }
-      this.statusLabel = 'Scan interrupted';
+      this.statusLabel = 'Scan interrupted.';
     } finally {
       this.hideEffects();
       this.activeTarget = null;
@@ -274,6 +295,8 @@ export class ScannerSystem {
 
   applyEffectState(target) {
     this.beam.material.opacity = this.effectState.beamOpacity;
+    this.endpointGlow.material.opacity = this.effectState.endpointOpacity;
+    this.endpointGlow.scale.setScalar(this.effectState.endpointScale);
     this.pulseRing.material.opacity = this.effectState.ringOpacity;
     this.pulseRing.scale.setScalar(this.effectState.ringScale);
     target.scanBoost = this.effectState.targetBoost;
@@ -297,6 +320,7 @@ export class ScannerSystem {
 
     this.pulseRing.position.set(this.targetPosition.x, 0.24, this.targetPosition.z);
     this.pulseRing.rotation.z += 0.035;
+    this.endpointGlow.position.copy(this.targetPosition);
   }
 
   getTargetPosition(target, destination) {
@@ -321,9 +345,13 @@ export class ScannerSystem {
 
     this.beam.visible = false;
     this.pulseRing.visible = false;
+    this.endpointGlow.visible = false;
     this.beam.material.opacity = 0;
     this.pulseRing.material.opacity = 0;
+    this.endpointGlow.material.opacity = 0;
     this.effectState.beamOpacity = 0;
+    this.effectState.endpointOpacity = 0;
+    this.effectState.endpointScale = 0.3;
     this.effectState.ringOpacity = 0;
     this.effectState.targetBoost = 0;
   }

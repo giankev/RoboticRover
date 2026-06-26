@@ -14,6 +14,7 @@ export class IceCave {
     this.scannableTargets = [];
     this.random = createSeededRandom(17);
     this.textures = getProceduralTextures();
+    this.focusPosition = new THREE.Vector3();
 
     this.collisionSystem = new CollisionSystem({
       minZ: WORLD.caveMinZ,
@@ -57,9 +58,22 @@ export class IceCave {
       }
 
       if (crystal.scanMarker) {
-        crystal.scanMarker.material.opacity =
-          crystal.scanState === 'scanned' ? 0.58 : 0.26 + pulse * 0.2;
-        crystal.scanMarker.rotation.z += delta * 0.55;
+        const collected = crystal.sample?.collected;
+        const scanned = crystal.scanState === 'scanned';
+        const nearest = crystal.isNearestTarget;
+        const collecting = crystal.collectionState === 'collecting';
+
+        crystal.scanMarker.visible = !collected;
+        if (!collected) {
+          const baseOpacity = scanned ? 0.5 : 0.18 + pulse * 0.14;
+          crystal.scanMarker.material.opacity = nearest || collecting
+            ? Math.min(0.78, baseOpacity + 0.28)
+            : baseOpacity;
+          crystal.scanMarker.scale.setScalar(
+            nearest || collecting ? 1.18 + pulse * 0.08 : 0.92 + pulse * 0.04
+          );
+          crystal.scanMarker.rotation.z += delta * (nearest ? 0.9 : 0.48);
+        }
       }
     }
 
@@ -72,12 +86,56 @@ export class IceCave {
       sample.material.emissiveIntensity =
         0.25 + pulse * 0.28 + (scanned ? 0.75 : 0) + (collecting ? 0.55 : 0);
       sample.light.intensity =
-        (collected ? 0 : 0.18) + pulse * 0.28 + (scanned ? 0.42 : 0);
+        collected ? 0 : 0.14 + pulse * 0.22 + (scanned ? 0.56 : 0);
 
       if (!collected) {
         sample.mesh.scale.copy(sample.baseScale).multiplyScalar(0.92 + pulse * 0.1);
       }
     }
+  }
+
+  updateTargetFocus(roverPosition, scanDistance, collectionDistance) {
+    let nearestTarget = null;
+    let nearestDistance = Infinity;
+
+    for (const target of this.scannableTargets) {
+      target.isNearestTarget = false;
+
+      if (target.sample?.collected) {
+        continue;
+      }
+
+      this.getTargetFocusPosition(target, this.focusPosition);
+      const distance = roverPosition.distanceTo(this.focusPosition);
+      const actionDistance = target.sample?.scanned
+        ? collectionDistance
+        : scanDistance;
+
+      if (distance <= actionDistance + 0.85 && distance < nearestDistance) {
+        nearestTarget = target;
+        nearestDistance = distance;
+      }
+    }
+
+    if (nearestTarget) {
+      nearestTarget.isNearestTarget = true;
+    }
+  }
+
+  clearTargetFocus() {
+    for (const target of this.scannableTargets) {
+      target.isNearestTarget = false;
+    }
+  }
+
+  getTargetFocusPosition(target, destination) {
+    if (target.sample?.pickupAnchor) {
+      target.sample.pickupAnchor.getWorldPosition(destination);
+      return destination;
+    }
+
+    target.mesh.getWorldPosition(destination);
+    return destination;
   }
 
   getCaveHalfWidth(z) {
@@ -682,18 +740,20 @@ export class IceCave {
     crystal.mesh.userData.scanState = crystal.scanState;
     crystal.mesh.userData.scannable = true;
 
+    crystal.sample = this.createSampleFragment(crystal, index, pickupDirection);
+    crystal.sample.target = crystal;
     const marker = new THREE.Mesh(
-      new THREE.TorusGeometry(0.9, 0.035, 8, 72),
+      new THREE.TorusGeometry(0.58, 0.024, 8, 72),
       this.materials.scannerMarker.clone()
     );
     marker.name = `ScannerTargetRing_${index + 1}`;
-    marker.position.set(crystal.mesh.position.x, 0.18, crystal.mesh.position.z);
+    marker.position.copy(crystal.sample.anchorPosition);
+    marker.position.y = 0.2;
     marker.rotation.x = Math.PI / 2;
     this.group.add(marker);
 
     crystal.scanMarker = marker;
-    crystal.sample = this.createSampleFragment(crystal, index, pickupDirection);
-    crystal.sample.target = crystal;
+    crystal.sample.marker = marker;
     crystal.collectionState = crystal.sample.collectionState;
     crystal.sampleGroup = crystal.sample.group;
     crystal.sampleMesh = crystal.sample.mesh;
@@ -846,6 +906,7 @@ export class IceCave {
       const sample = target.sample;
       target.scanState = 'unscanned';
       target.scanBoost = 0;
+      target.isNearestTarget = false;
       target.collectionState = 'uncollected';
       target.mesh.userData.scanState = 'unscanned';
       target.mesh.userData.collectionState = 'uncollected';
@@ -856,6 +917,10 @@ export class IceCave {
 
       if (target.scanMarker) {
         target.scanMarker.visible = true;
+        target.scanMarker.position.copy(sample.anchorPosition);
+        target.scanMarker.position.y = 0.2;
+        target.scanMarker.scale.setScalar(1);
+        target.scanMarker.material.opacity = 0.28;
         target.scanMarker.material.color.setHex(COLORS.scanner);
       }
 

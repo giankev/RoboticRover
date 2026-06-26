@@ -36,9 +36,11 @@ export class App {
       rover: this.rover,
       targets: this.iceCave.scannableTargets,
       onCollectionStart: () => this.cameraManager.enterTemporaryMode('Arm', this.rover),
-      onCollectionEnd: () => {
+      onCollectionEnd: ({ completed, sampleDeposited } = {}) => {
         this.cameraManager.exitTemporaryMode(this.rover);
-        this.missionMessage = 'Sample secured in inventory';
+        if (completed || sampleDeposited) {
+          this.missionMessage = 'Sample stored.';
+        }
       }
     });
     this.input = new InputController({
@@ -91,6 +93,15 @@ export class App {
       : this.input.getMovement();
 
     this.rover.update(delta, movement, this.iceCave.collisionSystem);
+    if (this.isGameplayActive()) {
+      this.iceCave.updateTargetFocus(
+        this.rover.root.position,
+        this.scanner.interactionDistance,
+        this.collector.interactionDistance
+      );
+    } else {
+      this.iceCave.clearTargetFocus();
+    }
     this.iceCave.update(delta);
     TWEEN.update(time);
     this.scanner.update(delta);
@@ -134,7 +145,12 @@ export class App {
   }
 
   runScanAction() {
-    if (!this.isGameplayActive() || this.collector.isCollecting) {
+    if (!this.isGameplayActive()) {
+      return;
+    }
+
+    if (this.collector.isCollecting) {
+      this.missionMessage = 'Collection in progress.';
       return;
     }
 
@@ -142,7 +158,12 @@ export class App {
   }
 
   runCollectionAction() {
-    if (!this.isGameplayActive() || this.scanner.isScanning) {
+    if (!this.isGameplayActive()) {
+      return;
+    }
+
+    if (this.scanner.isScanning) {
+      this.missionMessage = 'Scan in progress.';
       return;
     }
 
@@ -180,7 +201,7 @@ export class App {
     this.rover.resetMissionState();
     this.scanner.setInteractionDistance(difficulty.scanDistance);
     this.collector.setInteractionDistance(difficulty.collectionDistance);
-    this.missionMessage = 'Scan a mineral, then collect it';
+    this.missionMessage = 'Scan a sample, then collect it.';
     this.cameraManager.setMode('Follow', this.rover);
     this.resetRover();
   }
@@ -190,6 +211,13 @@ export class App {
     this.input.setEnabled(isPlaying);
     this.cameraManager.setControlsEnabled(isPlaying);
     this.statusLines.overlay.classList.toggle('is-hidden', !isPlaying);
+
+    if (state === GAME_STATES.MISSION_COMPLETE) {
+      this.missionMessage = 'Mission complete.';
+    } else if (state === GAME_STATES.GAME_OVER) {
+      this.missionMessage = 'Time expired.';
+    }
+
     this.updateGameOverlay();
     this.updateStatusOverlay();
   }
@@ -239,15 +267,16 @@ export class App {
 
     const { difficulty } = this.game;
 
-    this.statusLines.difficultyLine.textContent = difficulty.label;
-    this.statusLines.timerLine.textContent = `Time ${this.game.formattedTime}`;
+    this.statusLines.difficultyLine.textContent =
+      `Difficulty: ${this.getDifficultyDisplayLabel(difficulty)}`;
+    this.statusLines.timerLine.textContent = `Time: ${this.game.formattedTime}`;
     this.statusLines.samplesLine.textContent =
-      `Samples ${this.collector.collectedCount}/${difficulty.requiredSamples}`;
-    this.statusLines.statusLine.textContent = `Status · ${this.getMissionStatus()}`;
-    this.statusLines.cameraLine.textContent = `Camera · ${this.cameraManager.modeLabel}`;
+      `Samples: ${this.collector.collectedCount} / ${difficulty.requiredSamples}`;
+    this.statusLines.statusLine.textContent = `Status: ${this.getMissionStatus()}`;
+    this.statusLines.cameraLine.textContent = `Camera: ${this.cameraManager.modeLabel}`;
     this.statusLines.controlsLine.textContent = difficulty.showExtendedHints
-      ? 'W/S Drive · A/D Turn · X Scan · E Collect · C Cam · F Lights · M Menu'
-      : 'W/S Drive · A/D Turn · X Scan · E Collect · M Menu';
+      ? 'W/S Drive | A/D Turn | X Scan | E Collect | C Camera | F Lights | M Menu'
+      : 'W/S Drive | A/D Turn | X Scan | E Collect | M Menu';
   }
 
   getMissionStatus() {
@@ -268,6 +297,10 @@ export class App {
     }
 
     return this.missionMessage;
+  }
+
+  getDifficultyDisplayLabel(difficulty) {
+    return difficulty?.label?.replace(' Mission', '') ?? 'Mission';
   }
 
   createGameOverlay() {
@@ -360,19 +393,20 @@ export class App {
     this.gameOverlay.missionButtons.hidden = !actionMenuStates.includes(state);
     this.gameOverlay.restartButton.disabled = !difficulty;
     this.gameOverlay.eyebrow.hidden = isLoading;
-    this.gameOverlay.progressLabel.hidden = isLoading;
+    this.gameOverlay.progressLabel.hidden = !isLoading;
 
     if (state === GAME_STATES.LOADING) {
       this.gameOverlay.eyebrow.textContent = 'EUROPA EXPEDITION';
-      this.gameOverlay.title.textContent = 'CryoRover — Europa Ice Cave Explorer';
+      this.gameOverlay.title.textContent = 'CryoRover - Europa Ice Cave Explorer';
       this.gameOverlay.message.textContent = 'Map loading...';
       this.gameOverlay.progressFill.style.width = `${this.game.loadingProgress}%`;
+      this.gameOverlay.progressLabel.textContent = this.game.loadingLabel;
       return;
     }
 
     if (state === GAME_STATES.MENU) {
       this.gameOverlay.eyebrow.textContent = 'EUROPA EXPEDITION';
-      this.gameOverlay.title.textContent = 'CryoRover — Europa Ice Cave Explorer';
+      this.gameOverlay.title.textContent = 'CryoRover - Europa Ice Cave Explorer';
       const sampleLabel = MISSION.requiredSamples === 1 ? 'sample' : 'samples';
       this.gameOverlay.message.textContent = `Scan and secure ${MISSION.requiredSamples} mineral ${sampleLabel} before the mission timer expires.`;
       return;
@@ -388,15 +422,17 @@ export class App {
 
     if (state === GAME_STATES.MISSION_COMPLETE) {
       this.gameOverlay.eyebrow.textContent = 'MISSION COMPLETE';
-      this.gameOverlay.title.textContent = 'Europa samples secured';
-      this.gameOverlay.message.textContent = `${this.collector.collectedCount} / ${difficulty.requiredSamples} samples deposited with ${this.game.formattedTime} remaining.`;
+      this.gameOverlay.title.textContent = 'Mission Complete';
+      this.gameOverlay.message.textContent =
+        `${this.collector.collectedCount} / ${difficulty.requiredSamples} samples stored. ${difficulty.label}. ${this.game.formattedTime} remaining.`;
       return;
     }
 
     if (state === GAME_STATES.GAME_OVER) {
       this.gameOverlay.eyebrow.textContent = 'MISSION FAILED';
-      this.gameOverlay.title.textContent = 'Expedition window closed';
-      this.gameOverlay.message.textContent = `${this.collector.collectedCount} / ${difficulty.requiredSamples} samples were deposited before time expired.`;
+      this.gameOverlay.title.textContent = 'Time Expired';
+      this.gameOverlay.message.textContent =
+        `${this.collector.collectedCount} / ${difficulty.requiredSamples} samples stored. ${difficulty.label}.`;
     }
   }
 

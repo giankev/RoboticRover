@@ -24,6 +24,7 @@ export class Rover {
     this.headlightCurrentIntensity = 0;
     this.headlightTargetIntensity = 0;
     this.headlightFadeSpeed = 28;
+    this.headlightTime = 0;
     this.scannerActive = false;
     this.scannerAlignTween = null;
     this.scannerFocusTween = null;
@@ -586,19 +587,26 @@ export class Rover {
   }
 
   updateHeadlights(delta) {
-    if (this.headlightCurrentIntensity === this.headlightTargetIntensity) {
+    this.headlightTime += delta;
+
+    if (
+      this.headlightCurrentIntensity === this.headlightTargetIntensity &&
+      !this.headlightsEnabled
+    ) {
       return;
     }
 
-    const blend = Math.min(1, delta * this.headlightFadeSpeed);
-    this.headlightCurrentIntensity = THREE.MathUtils.lerp(
-      this.headlightCurrentIntensity,
-      this.headlightTargetIntensity,
-      blend
-    );
+    if (this.headlightCurrentIntensity !== this.headlightTargetIntensity) {
+      const blend = Math.min(1, delta * this.headlightFadeSpeed);
+      this.headlightCurrentIntensity = THREE.MathUtils.lerp(
+        this.headlightCurrentIntensity,
+        this.headlightTargetIntensity,
+        blend
+      );
 
-    if (Math.abs(this.headlightCurrentIntensity - this.headlightTargetIntensity) < 1) {
-      this.headlightCurrentIntensity = this.headlightTargetIntensity;
+      if (Math.abs(this.headlightCurrentIntensity - this.headlightTargetIntensity) < 1) {
+        this.headlightCurrentIntensity = this.headlightTargetIntensity;
+      }
     }
 
     this.applyHeadlightState(this.headlightCurrentIntensity);
@@ -607,14 +615,19 @@ export class Rover {
   applyHeadlightState(intensity) {
     const ratio = THREE.MathUtils.clamp(intensity / ROVER.headlightIntensity, 0, 1);
     const isVisible = this.headlightsEnabled && ratio > 0.02;
+    const shimmer = isVisible
+      ? 1 + Math.sin(this.headlightTime * 8.7) * 0.014 +
+        Math.sin(this.headlightTime * 13.1) * 0.008
+      : 1;
+    const appliedIntensity = intensity * shimmer;
 
     for (const light of this.headlights) {
-      light.intensity = intensity;
+      light.intensity = appliedIntensity;
       light.visible = isVisible;
     }
 
     for (const lens of this.headlightLenses) {
-      lens.material.emissiveIntensity = ratio * 8.5;
+      lens.material.emissiveIntensity = ratio * 8.5 * shimmer;
       lens.material.emissive.setHex(isVisible ? COLORS.headlight : 0x000000);
       lens.material.color.setHex(isVisible ? COLORS.headlight : 0x1a242d);
     }

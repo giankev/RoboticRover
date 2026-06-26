@@ -29,17 +29,22 @@ export class SampleCollectionSystem {
     const nearest = this.findNearestCollectibleTarget();
 
     if (!nearest) {
-      this.statusLabel = 'Move closer to collect';
+      this.statusLabel = 'No sample nearby.';
+      return;
+    }
+
+    if (nearest.reason === 'too-far') {
+      this.statusLabel = 'Move closer to collect.';
       return;
     }
 
     if (nearest.reason === 'collected') {
-      this.statusLabel = 'Sample already collected';
+      this.statusLabel = 'Sample already stored.';
       return;
     }
 
     if (!nearest.target.sample.scanned) {
-      this.statusLabel = 'Scan required';
+      this.statusLabel = 'Scan required.';
       return;
     }
 
@@ -73,7 +78,7 @@ export class SampleCollectionSystem {
     this.isCollecting = true;
     this.activeTarget = target;
     this.setTargetCollectionState(target, 'collecting');
-    this.setState('aligning', 'Aligning');
+    this.setState('aligning', 'Aligning sample.');
 
     try {
       this.onCollectionStart();
@@ -85,31 +90,31 @@ export class SampleCollectionSystem {
       );
       this.getSampleWorldPosition(target, this.samplePosition);
 
-      this.setState('pre-grasp', 'Positioning arm');
+      this.setState('pre-grasp', 'Positioning arm.');
       await this.rover.animateArmCollectionReady(this.samplePosition);
 
-      this.setState('opening-gripper', 'Opening gripper');
+      this.setState('opening-gripper', 'Opening gripper.');
       await this.rover.openArmGripper();
 
-      this.setState('final-approach', 'Reaching sample');
+      this.setState('final-approach', 'Reaching sample.');
       await this.rover.animateArmCollectionGrab(this.samplePosition);
 
       const grabDistance = this.rover.getGripperHoldDistanceTo(this.samplePosition);
 
       if (grabDistance > COLLECTION.grabDistance) {
-        throw new CollectionAbort('Move closer to collect');
+        throw new CollectionAbort('Move closer to collect.');
       }
 
-      this.setState('grasping', 'Closing gripper');
+      this.setState('grasping', 'Closing gripper.');
       await this.rover.closeArmGripper();
       sampleAttachment = this.captureSampleTransform(sampleObject);
       this.rover.attachSampleToGripper(sampleObject);
       sampleAttached = true;
 
-      this.setState('lifting', 'Lifting sample');
+      this.setState('lifting', 'Lifting sample.');
       await this.rover.animateArmCollectionLift(this.samplePosition);
 
-      this.setState('pre-drop', 'Clearing hatch');
+      this.setState('pre-drop', 'Opening hatch.');
       // The raised stow pose remains outside the tray, so it can move while the
       // sliding hatch opens. This removes a dead pause without letting the
       // gripper enter the inventory before the hatch is clear.
@@ -119,30 +124,30 @@ export class SampleCollectionSystem {
       ]);
       doorOpened = true;
 
-      this.setState('dropping', 'Moving to container');
+      this.setState('dropping', 'Moving to container.');
       await this.rover.animateArmToContainerDrop();
 
       const dropDistance = this.rover.getGripperHoldDistanceToContainerDropHover();
 
       if (dropDistance > COLLECTION.dropDistance) {
-        throw new CollectionAbort('Container alignment failed');
+        throw new CollectionAbort('Container alignment failed.');
       }
 
-      this.setState('opening-gripper', 'Opening gripper');
+      this.setState('opening-gripper', 'Opening gripper.');
       await this.rover.openArmGripper(COLLECTION.releaseGripperDuration);
 
-      this.setState('releasing', 'Releasing sample');
+      this.setState('releasing', 'Releasing sample.');
       this.rover.releaseSampleForDrop(sampleObject);
       sampleAttached = false;
       sampleReleased = true;
 
-      this.setState('falling', 'Depositing sample');
+      this.setState('falling', 'Storing sample.');
       const fallCompleted = await this.rover.animateSampleFallIntoContainer(
         sampleObject
       );
 
       if (!fallCompleted) {
-        throw new CollectionAbort('Sample release interrupted');
+        throw new CollectionAbort('Sample release interrupted.');
       }
 
       this.rover.depositSampleInContainer(sampleObject);
@@ -154,23 +159,23 @@ export class SampleCollectionSystem {
         target.scanMarker.visible = false;
       }
 
-      this.setState('retracting', 'Retracting arm');
+      this.setState('retracting', 'Retracting arm.');
       await this.rover.animateArmToContainer();
 
-      this.setState('closing-door', 'Closing hatch');
+      this.setState('closing-door', 'Closing hatch.');
       await this.rover.closeContainerDoor();
       doorOpened = false;
 
-      this.setState('returning', 'Returning arm');
+      this.setState('returning', 'Returning arm.');
       await this.rover.returnArmToIdle(COLLECTION.returnDuration);
 
       completed = true;
-      this.setState('complete', 'Sample secured');
+      this.setState('complete', 'Sample stored.');
     } catch (error) {
       const message =
         error instanceof CollectionAbort
           ? error.message
-          : 'Collection interrupted';
+          : 'Collection interrupted.';
       this.setState('aborting', message);
     } finally {
       if (!completed && sampleAttached) {
@@ -195,20 +200,21 @@ export class SampleCollectionSystem {
         if (target.scanMarker) {
           target.scanMarker.visible = false;
         }
-        this.statusLabel = 'Sample collected';
+        this.statusLabel = 'Sample stored.';
       }
 
       this.rover.setScannerActive(false);
       this.activeTarget = null;
       this.isCollecting = false;
       this.state = 'idle';
-      this.onCollectionEnd();
+      this.onCollectionEnd({ completed, sampleDeposited, status: this.statusLabel });
     }
   }
 
   findNearestCollectibleTarget() {
     let nearestScannedUncollected = null;
     let nearestUnscannedUncollected = null;
+    let nearestOutOfRangeUncollected = null;
     let nearestCollected = null;
     const roverPosition = this.rover.root.position;
 
@@ -221,6 +227,13 @@ export class SampleCollectionSystem {
       const distance = roverPosition.distanceTo(position);
 
       if (distance > this.interactionDistance) {
+        if (
+          !target.sample.collected &&
+          (!nearestOutOfRangeUncollected ||
+            distance < nearestOutOfRangeUncollected.distance)
+        ) {
+          nearestOutOfRangeUncollected = { target, distance, reason: 'too-far' };
+        }
         continue;
       }
 
@@ -249,7 +262,12 @@ export class SampleCollectionSystem {
       }
     }
 
-    return nearestScannedUncollected ?? nearestUnscannedUncollected ?? nearestCollected;
+    return (
+      nearestScannedUncollected ??
+      nearestUnscannedUncollected ??
+      nearestCollected ??
+      nearestOutOfRangeUncollected
+    );
   }
 
   getSampleAnchorPosition(target, destination) {
