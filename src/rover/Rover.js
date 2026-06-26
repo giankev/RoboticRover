@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import * as TWEEN from '@tweenjs/tween.js';
-import { COLORS, ROVER } from '../config/constants.js';
+import { COLLECTION, COLORS, ROVER } from '../config/constants.js';
 import { RoverAnimations } from './RoverAnimations.js';
 import { RoverArm, createArmMaterials } from './RoverArm.js';
+import { getProceduralTextures } from '../world/ProceduralTextures.js';
 
 const FORWARD = new THREE.Vector3(0, 0, -1);
 const SCANNER_TARGET_LOCAL = new THREE.Vector3();
 const SCANNER_DIRECTION = new THREE.Vector3();
+const TWO_PI = Math.PI * 2;
 
 export class Rover {
   constructor() {
@@ -23,15 +25,27 @@ export class Rover {
     this.headlightTargetIntensity = 0;
     this.headlightFadeSpeed = 28;
     this.scannerActive = false;
+    this.scannerAlignTween = null;
     this.scannerFocusTween = null;
     this.scannerFailureTween = null;
+    this.containerDoorTween = null;
+    this.resolveContainerDoorTween = null;
+    this.sampleFallTween = null;
+    this.resolveSampleFallTween = null;
+    this.sampleDepositCount = 0;
     this.wheels = [];
     this.headlights = [];
-    this.headlightCones = [];
     this.moveDirection = new THREE.Vector3();
     this.moveStep = new THREE.Vector3();
     this.candidatePosition = new THREE.Vector3();
+    this.scannerOrigin = new THREE.Vector3();
+    this.gripperTipPosition = new THREE.Vector3();
+    this.gripperHoldPosition = new THREE.Vector3();
+    this.containerDropPosition = new THREE.Vector3();
+    this.containerDropHoverPosition = new THREE.Vector3();
+    this.sampleDropTarget = new THREE.Vector3();
 
+    this.textures = getProceduralTextures();
     this.materials = this.createMaterials();
     this.build();
     this.applyHeadlightState(0);
@@ -114,6 +128,15 @@ export class Rover {
     this.root.rotation.set(0, 0, 0);
   }
 
+  resetMissionState() {
+    this.stopSampleFallTween();
+    this.forceCloseContainerDoor();
+    this.arm.setIdlePose();
+    this.setScannerActive(false);
+    this.sampleDepositCount = 0;
+    this.reset();
+  }
+
   setArmIdle() {
     this.arm.animateToIdle();
   }
@@ -142,9 +165,272 @@ export class Rover {
     this.scannerActive = active;
   }
 
-  getScannerOrigin(target = new THREE.Vector3()) {
-    this.cameraLens.getWorldPosition(target);
+  getScannerOrigin(target = this.scannerOrigin) {
+    return this.arm.getScannerOrigin(target);
+  }
+
+  animateArmScan(worldPosition) {
+    return this.arm.animateToScanPose(worldPosition);
+  }
+
+  resetArmScan() {
+    return this.arm.returnFromScan();
+  }
+
+  animateArmCollectionReady(worldPosition) {
+    return this.arm.animateToCollectionReady(
+      worldPosition,
+      COLLECTION.readyDuration
+    );
+  }
+
+  animateArmCollectionGrab(worldPosition) {
+    return this.arm.animateToCollectionGrab(
+      worldPosition,
+      COLLECTION.reachDuration
+    );
+  }
+
+  animateArmCollectionLift(worldPosition) {
+    return this.arm.animateToCollectionLift(
+      worldPosition,
+      COLLECTION.liftDuration
+    );
+  }
+
+  animateArmToContainer() {
+    return this.arm.animateToContainerStow(COLLECTION.stowDuration);
+  }
+
+  animateArmToContainerDrop() {
+    return this.arm.animateToContainerDrop(
+      this.getContainerDropHoverPosition(),
+      COLLECTION.dropDuration
+    );
+  }
+
+  openArmGripper(duration) {
+    return this.arm.openGripper(duration);
+  }
+
+  closeArmGripper() {
+    return this.arm.closeGripper();
+  }
+
+  getGripperTipPosition(target = this.gripperTipPosition) {
+    return this.arm.getGripperTipPosition(target);
+  }
+
+  getGripperHoldPosition(target = this.gripperHoldPosition) {
+    return this.arm.getGripperHoldPosition(target);
+  }
+
+  getContainerDropPosition(target = this.containerDropPosition) {
+    this.containerDropInsideAnchor.getWorldPosition(target);
     return target;
+  }
+
+  getContainerDropHoverPosition(target = this.containerDropHoverPosition) {
+    this.containerDropHoverAnchor.getWorldPosition(target);
+    return target;
+  }
+
+  getGripperTipDistanceTo(worldPosition) {
+    const tipPosition = this.getGripperTipPosition();
+    return tipPosition.distanceTo(worldPosition);
+  }
+
+  getGripperHoldDistanceTo(worldPosition) {
+    const holdPosition = this.getGripperHoldPosition();
+    return holdPosition.distanceTo(worldPosition);
+  }
+
+  getGripperTipDistanceToContainerDrop() {
+    const tipPosition = this.getGripperTipPosition();
+    const dropPosition = this.getContainerDropPosition();
+    return tipPosition.distanceTo(dropPosition);
+  }
+
+  getGripperHoldDistanceToContainerDrop() {
+    const holdPosition = this.getGripperHoldPosition();
+    const dropPosition = this.getContainerDropPosition();
+    return holdPosition.distanceTo(dropPosition);
+  }
+
+  getGripperHoldDistanceToContainerDropHover() {
+    const holdPosition = this.getGripperHoldPosition();
+    const hoverPosition = this.getContainerDropHoverPosition();
+    return holdPosition.distanceTo(hoverPosition);
+  }
+
+  returnArmToIdle(duration) {
+    return this.arm.animateToIdle(duration);
+  }
+
+  openContainerDoor() {
+    return this.animateContainerDoor(true, COLLECTION.doorDuration);
+  }
+
+  closeContainerDoor() {
+    return this.animateContainerDoor(false, COLLECTION.doorDuration);
+  }
+
+  animateContainerDoor(open, duration = 520) {
+    this.stopContainerDoorTween();
+
+    const targetPosition = open
+      ? this.containerDoorOpenPosition
+      : this.containerDoorClosedPosition;
+    const fixedY = this.containerDoorClosedPosition.y;
+    const fixedZ = this.containerDoorClosedPosition.z;
+    const state = { x: this.containerDoor.position.x };
+
+    return new Promise((resolve) => {
+      this.resolveContainerDoorTween = resolve;
+      this.containerDoorTween = new TWEEN.Tween(state, true)
+        .to({ x: targetPosition.x }, duration)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .onUpdate(() => {
+          this.containerDoor.position.set(state.x, fixedY, fixedZ);
+        })
+        .onComplete(() => {
+          this.containerDoor.position.set(targetPosition.x, fixedY, fixedZ);
+          this.containerDoorTween = null;
+          this.resolveContainerDoorTween = null;
+          resolve(true);
+        })
+        .start();
+    });
+  }
+
+  stopContainerDoorTween() {
+    if (this.containerDoorTween) {
+      this.containerDoorTween.stop();
+      this.containerDoorTween = null;
+    }
+
+    if (this.resolveContainerDoorTween) {
+      const resolve = this.resolveContainerDoorTween;
+      this.resolveContainerDoorTween = null;
+      resolve(false);
+    }
+  }
+
+  isContainerDoorOpen() {
+    return Math.abs(
+      this.containerDoor.position.x - this.containerDoorClosedPosition.x
+    ) > 0.01;
+  }
+
+  forceCloseContainerDoor() {
+    this.stopContainerDoorTween();
+    this.containerDoor.position.copy(this.containerDoorClosedPosition);
+  }
+
+  attachSampleToGripper(sampleObject) {
+    this.root.updateWorldMatrix(true, true);
+    sampleObject.updateWorldMatrix(true, true);
+    this.arm.gripperHoldAnchor.attach(sampleObject);
+    sampleObject.userData.heldByGripper = true;
+  }
+
+  releaseSampleForDrop(sampleObject) {
+    this.root.updateWorldMatrix(true, true);
+    sampleObject.updateWorldMatrix(true, true);
+    this.sampleContainer.attach(sampleObject);
+    sampleObject.visible = true;
+    sampleObject.userData.heldByGripper = false;
+  }
+
+  animateSampleFallIntoContainer(sampleObject, duration = COLLECTION.fallDuration) {
+    this.stopSampleFallTween();
+    this.sampleContainer.updateWorldMatrix(true, true);
+
+    const targetLocal = this.sampleContainer.worldToLocal(
+      this.getContainerDropPosition(this.sampleDropTarget)
+    );
+    const state = {
+      x: sampleObject.position.x,
+      y: sampleObject.position.y,
+      z: sampleObject.position.z
+    };
+
+    return new Promise((resolve) => {
+      this.resolveSampleFallTween = resolve;
+      this.sampleFallTween = new TWEEN.Tween(state, true)
+        .to(
+          { x: targetLocal.x, y: targetLocal.y, z: targetLocal.z },
+          duration
+        )
+        .easing(TWEEN.Easing.Quadratic.In)
+        .onUpdate(() => {
+          sampleObject.position.set(state.x, state.y, state.z);
+        })
+        .onComplete(() => {
+          sampleObject.position.copy(targetLocal);
+          this.sampleFallTween = null;
+          this.resolveSampleFallTween = null;
+          resolve(true);
+        })
+        .start();
+    });
+  }
+
+  stopSampleFallTween() {
+    if (this.sampleFallTween) {
+      this.sampleFallTween.stop();
+      this.sampleFallTween = null;
+    }
+
+    if (this.resolveSampleFallTween) {
+      const resolve = this.resolveSampleFallTween;
+      this.resolveSampleFallTween = null;
+      resolve(false);
+    }
+  }
+
+  depositSampleInContainer(sampleObject) {
+    this.sampleStorageGroup.add(sampleObject);
+    sampleObject.userData.heldByGripper = false;
+    sampleObject.visible = false;
+    sampleObject.position.set(0, 0, 0);
+    this.sampleDepositCount += 1;
+  }
+
+  alignToScanTarget(worldPosition, duration = 640) {
+    this.setScannerActive(true);
+
+    if (this.scannerAlignTween) {
+      this.scannerAlignTween.stop();
+    }
+
+    const dx = worldPosition.x - this.root.position.x;
+    const dz = worldPosition.z - this.root.position.z;
+    const horizontalDistance = Math.hypot(dx, dz);
+
+    if (horizontalDistance <= 0.001) {
+      return Promise.resolve();
+    }
+
+    const targetYaw = Math.atan2(-dx, -dz);
+    const startYaw = this.root.rotation.y;
+    const endYaw = startYaw + shortestAngleDelta(startYaw, targetYaw);
+    const state = { yaw: startYaw };
+
+    return new Promise((resolve) => {
+      this.scannerAlignTween = new TWEEN.Tween(state, true)
+        .to({ yaw: endYaw }, duration)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .onUpdate(() => {
+          this.root.rotation.y = state.yaw;
+        })
+        .onComplete(() => {
+          this.root.rotation.y = normalizeAngle(endYaw);
+          this.scannerAlignTween = null;
+          resolve();
+        })
+        .start();
+    });
   }
 
   animateScannerFocus(worldPosition, duration = 420) {
@@ -211,7 +497,7 @@ export class Rover {
     });
   }
 
-  playScannerFailure(duration = 720) {
+  playScannerFailure(duration = 720, { includeArm = false } = {}) {
     this.setScannerActive(true);
 
     if (this.scannerFailureTween) {
@@ -220,8 +506,11 @@ export class Rover {
 
     const state = { progress: 0 };
     const indicator = this.scannerIndicator.material;
+    const armFailure = includeArm
+      ? this.arm.playScanFailure(duration)
+      : Promise.resolve();
 
-    return new Promise((resolve) => {
+    const cameraFailure = new Promise((resolve) => {
       this.scannerFailureTween = new TWEEN.Tween(state, true)
         .to({ progress: 1 }, duration)
         .easing(TWEEN.Easing.Cubic.Out)
@@ -236,10 +525,13 @@ export class Rover {
           indicator.emissiveIntensity = 0;
           this.scannerIndicator.scale.setScalar(1);
           this.scannerFailureTween = null;
-          this.setScannerActive(false);
           resolve();
         })
         .start();
+    });
+
+    return Promise.all([cameraFailure, armFailure]).then(() => {
+      this.setScannerActive(false);
     });
   }
 
@@ -327,10 +619,6 @@ export class Rover {
       lens.material.color.setHex(isVisible ? COLORS.headlight : 0x1a242d);
     }
 
-    for (const cone of this.headlightCones) {
-      cone.visible = isVisible;
-      cone.material.opacity = ratio * 0.09;
-    }
   }
 
   setHeadlightVisibility(visible) {
@@ -338,9 +626,6 @@ export class Rover {
       light.visible = visible;
     }
 
-    for (const cone of this.headlightCones) {
-      cone.visible = visible;
-    }
   }
 
   build() {
@@ -352,13 +637,16 @@ export class Rover {
     this.sampleContainer = this.createSampleContainer();
     this.arm = new RoverArm(createArmMaterials());
 
+    // This makes the inventory inherit the body bob and tilt applied while
+    // driving, while keeping all tray, door, and deposit anchors together.
+    this.body.add(this.sampleContainer);
+
     this.root.add(
       this.body,
       this.wheelsGroup,
       this.cameraMast,
       this.antennaBase,
       this.headlightsGroup,
-      this.sampleContainer,
       this.arm.root
     );
   }
@@ -369,7 +657,7 @@ export class Rover {
     body.position.y = 0.86;
 
     const chassis = new THREE.Mesh(
-      new THREE.BoxGeometry(2.15, 0.58, 1.42),
+      new THREE.BoxGeometry(2.04, 0.54, 1.34),
       this.materials.body
     );
     chassis.name = 'MainChassis';
@@ -378,7 +666,7 @@ export class Rover {
     body.add(chassis);
 
     const topDeck = new THREE.Mesh(
-      new THREE.BoxGeometry(1.45, 0.28, 1.04),
+      new THREE.BoxGeometry(1.42, 0.2, 0.96),
       this.materials.panel
     );
     topDeck.name = 'UpperDeck';
@@ -388,11 +676,11 @@ export class Rover {
     body.add(topDeck);
 
     const frontPlate = new THREE.Mesh(
-      new THREE.BoxGeometry(1.28, 0.22, 0.12),
+      new THREE.BoxGeometry(1.16, 0.16, 0.08),
       this.materials.accent
     );
     frontPlate.name = 'FrontInstrumentPlate';
-    frontPlate.position.set(0, 0.04, -0.78);
+    frontPlate.position.set(0, 0.02, -0.73);
     frontPlate.castShadow = true;
     frontPlate.receiveShadow = true;
     body.add(frontPlate);
@@ -406,12 +694,12 @@ export class Rover {
     wheelsGroup.position.y = 0.38;
 
     const wheelPositions = [
-      [-1.05, 0, -0.57],
-      [1.05, 0, -0.57],
-      [-1.05, 0, 0],
-      [1.05, 0, 0],
-      [-1.05, 0, 0.57],
-      [1.05, 0, 0.57]
+      [-1.2, 0, -0.57],
+      [1.2, 0, -0.57],
+      [-1.2, 0, 0],
+      [1.2, 0, 0],
+      [-1.2, 0, 0.57],
+      [1.2, 0, 0.57]
     ];
 
     wheelPositions.forEach(([x, y, z], index) => {
@@ -457,7 +745,7 @@ export class Rover {
   createCameraMast() {
     const cameraMast = new THREE.Group();
     cameraMast.name = 'CameraMast';
-    cameraMast.position.set(-0.38, 1.2, -0.2);
+    cameraMast.position.set(-0.38, 1.4, -0.2);
 
     const mast = new THREE.Mesh(
       new THREE.CylinderGeometry(0.055, 0.065, 0.96, 12),
@@ -509,7 +797,7 @@ export class Rover {
   createAntenna() {
     const antennaBase = new THREE.Group();
     antennaBase.name = 'AntennaBase';
-    antennaBase.position.set(0.48, 1.24, 0.28);
+    antennaBase.position.set(0.48, 1.4, 0.28);
 
     const stalk = new THREE.Mesh(
       new THREE.CylinderGeometry(0.035, 0.045, 0.72, 10),
@@ -564,110 +852,230 @@ export class Rover {
         0,
         ROVER.headlightDistance,
         ROVER.headlightAngle,
-        0.64,
-        1.1
+        ROVER.headlightPenumbra,
+        ROVER.headlightDecay
       );
       light.name = `HeadlightBeam_${index + 1}`;
       light.position.set(x, 0.12, -0.08);
       light.visible = false;
       light.castShadow = true;
-      light.shadow.mapSize.set(1024, 1024);
+      light.shadow.mapSize.set(512, 512);
       light.shadow.camera.near = 0.2;
       light.shadow.camera.far = ROVER.headlightDistance;
+      light.shadow.normalBias = 0.02;
 
       const target = new THREE.Object3D();
       target.name = `HeadlightTarget_${index + 1}`;
-      target.position.set(x * 0.18, -1.15, -42);
+      target.position.set(x * 0.14, -0.72, -58);
       light.target = target;
 
-      const cone = this.createHeadlightCone(`HeadlightCone_${index + 1}`, x);
-
-      headlights.add(housing, lens, cone, light, target);
+      headlights.add(housing, lens, light, target);
       this.headlights.push(light);
       this.headlightLenses.push(lens);
-      this.headlightCones.push(cone);
     });
 
     return headlights;
   }
 
-  createHeadlightCone(name, x) {
-    const coneLength = 16;
-    const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.7, coneLength, 24, 1, true),
-      this.materials.headlightCone.clone()
-    );
-
-    cone.name = name;
-    cone.position.set(x, 0.04, -0.2 - coneLength / 2);
-    cone.rotation.x = Math.PI / 2;
-    cone.visible = false;
-    cone.renderOrder = 2;
-    return cone;
-  }
-
   createSampleContainer() {
     const sampleContainer = new THREE.Group();
     sampleContainer.name = 'SampleContainer';
-    sampleContainer.position.set(-0.62, 1.18, 0.38);
+    sampleContainer.position.set(-0.62, 0.57, 0.34);
 
-    const bin = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.36, 0.46),
+    const floor = new THREE.Mesh(
+      new THREE.BoxGeometry(0.64, 0.07, 0.58),
       this.materials.container
     );
-    bin.name = 'SampleContainerBin';
-    bin.castShadow = true;
-    bin.receiveShadow = true;
+    floor.name = 'SampleContainerFloor';
+    floor.position.y = 0.035;
+    floor.castShadow = true;
+    floor.receiveShadow = true;
 
-    const rim = new THREE.Mesh(
-      new THREE.BoxGeometry(0.58, 0.08, 0.54),
-      this.materials.trim
+    const wallDefinitions = [
+      ['LeftWall', new THREE.BoxGeometry(0.06, 0.28, 0.58), [-0.29, 0.175, 0]],
+      ['RightWall', new THREE.BoxGeometry(0.06, 0.28, 0.58), [0.29, 0.175, 0]],
+      ['FrontWall', new THREE.BoxGeometry(0.52, 0.28, 0.06), [0, 0.175, -0.26]],
+      ['BackWall', new THREE.BoxGeometry(0.52, 0.28, 0.06), [0, 0.175, 0.26]]
+    ];
+    const rimDefinitions = [
+      ['LeftRim', new THREE.BoxGeometry(0.06, 0.045, 0.64), [-0.32, 0.315, 0]],
+      ['RightRim', new THREE.BoxGeometry(0.06, 0.045, 0.64), [0.32, 0.315, 0]],
+      ['FrontRim', new THREE.BoxGeometry(0.58, 0.045, 0.06), [0, 0.315, -0.29]],
+      ['BackRim', new THREE.BoxGeometry(0.58, 0.045, 0.06), [0, 0.315, 0.29]]
+    ];
+
+    const walls = wallDefinitions.map(([name, geometry, position]) =>
+      this.createContainerPiece(`SampleContainer${name}`, geometry, position, this.materials.container)
     );
-    rim.name = 'SampleContainerRim';
-    rim.position.y = 0.21;
-    rim.castShadow = true;
-    rim.receiveShadow = true;
+    const rimRails = rimDefinitions.map(([name, geometry, position]) =>
+      this.createContainerPiece(`SampleContainer${name}`, geometry, position, this.materials.trim)
+    );
 
-    sampleContainer.add(bin, rim);
+    const mountingPads = [
+      this.createContainerPiece(
+        'SampleContainerMountLeft',
+        new THREE.BoxGeometry(0.16, 0.04, 0.22),
+        [-0.2, -0.02, 0],
+        this.materials.trim
+      ),
+      this.createContainerPiece(
+        'SampleContainerMountRight',
+        new THREE.BoxGeometry(0.16, 0.04, 0.22),
+        [0.2, -0.02, 0],
+        this.materials.trim
+      )
+    ];
+
+    const doorRailGroup = new THREE.Group();
+    doorRailGroup.name = 'ContainerDoorRailGroup';
+    const doorGuideDefinitions = [
+      ['Front', [-0.42, 0.36, -0.34]],
+      ['Back', [-0.42, 0.36, 0.34]]
+    ];
+    doorGuideDefinitions.forEach(([name, position]) => {
+      const guide = this.createContainerPiece(
+        `ContainerDoorGuide${name}`,
+        new THREE.BoxGeometry(1.56, 0.035, 0.035),
+        position,
+        this.materials.trim
+      );
+      doorRailGroup.add(guide);
+    });
+
+    const door = new THREE.Group();
+    door.name = 'ContainerHatch';
+    const fixedDoorY = 0.39;
+    const closedPosition = new THREE.Vector3(0, fixedDoorY, 0);
+    const openPosition = new THREE.Vector3(-0.84, fixedDoorY, 0);
+    door.position.copy(closedPosition);
+
+    const doorPanel = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.045, 0.64),
+      this.materials.panel
+    );
+    doorPanel.name = 'ContainerHatchPanel';
+    doorPanel.castShadow = true;
+    doorPanel.receiveShadow = true;
+    door.add(doorPanel);
+
+    const doorHandle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.035, 0.045),
+      this.materials.accent
+    );
+    doorHandle.name = 'ContainerHatchHandle';
+    doorHandle.position.set(0, 0.035, -0.3);
+    doorHandle.castShadow = true;
+    door.add(doorHandle);
+
+    const depositPosition = new THREE.Vector3(0, 0.12, 0);
+    const storageGroup = new THREE.Group();
+    storageGroup.name = 'CollectedSamples';
+    storageGroup.position.copy(depositPosition);
+
+    const dropInsideAnchor = new THREE.Object3D();
+    dropInsideAnchor.name = 'ContainerDropInsideAnchor';
+    dropInsideAnchor.position.copy(depositPosition);
+
+    const dropHoverAnchor = new THREE.Object3D();
+    dropHoverAnchor.name = 'ContainerDropHoverAnchor';
+    dropHoverAnchor.position.set(0, 0.65, 0);
+
+    doorRailGroup.add(door);
+    sampleContainer.add(
+      floor,
+      ...walls,
+      ...rimRails,
+      ...mountingPads,
+      storageGroup,
+      dropInsideAnchor,
+      dropHoverAnchor,
+      doorRailGroup
+    );
+    this.containerDoor = door;
+    this.containerDoorRailGroup = doorRailGroup;
+    this.containerDoorClosedPosition = closedPosition;
+    this.containerDoorOpenPosition = openPosition;
+    this.containerDoorFixedY = fixedDoorY;
+    this.sampleStorageGroup = storageGroup;
+    this.containerDropAnchor = dropInsideAnchor;
+    this.containerDropInsideAnchor = dropInsideAnchor;
+    this.containerDropHoverAnchor = dropHoverAnchor;
     return sampleContainer;
   }
 
+  createContainerPiece(name, geometry, position, material) {
+    const piece = new THREE.Mesh(geometry, material);
+    piece.name = name;
+    piece.position.set(...position);
+    piece.castShadow = true;
+    piece.receiveShadow = true;
+    return piece;
+  }
+
   createMaterials() {
+    const { roverMetal, roverTrim, rock } = this.textures;
+
     return {
       body: new THREE.MeshStandardMaterial({
-        color: COLORS.roverBody,
-        roughness: 0.48,
-        metalness: 0.2
+        color: 0xd8e8eb,
+        map: roverMetal.map,
+        normalMap: roverMetal.normalMap,
+        normalScale: new THREE.Vector2(0.2, 0.2),
+        roughnessMap: roverMetal.roughnessMap,
+        metalnessMap: roverMetal.metalnessMap,
+        roughness: 0.38,
+        metalness: 0.48
       }),
       panel: new THREE.MeshStandardMaterial({
-        color: 0x9db2bf,
-        roughness: 0.42,
-        metalness: 0.26
+        color: 0xb3cbd1,
+        map: roverMetal.map,
+        normalMap: roverMetal.normalMap,
+        normalScale: new THREE.Vector2(0.16, 0.16),
+        roughnessMap: roverMetal.roughnessMap,
+        metalnessMap: roverMetal.metalnessMap,
+        roughness: 0.34,
+        metalness: 0.56
       }),
       trim: new THREE.MeshStandardMaterial({
-        color: COLORS.roverTrim,
-        roughness: 0.58,
-        metalness: 0.28
+        color: 0x314b58,
+        map: roverTrim.map,
+        normalMap: roverTrim.normalMap,
+        normalScale: new THREE.Vector2(0.18, 0.18),
+        roughnessMap: roverTrim.roughnessMap,
+        metalnessMap: roverTrim.metalnessMap,
+        roughness: 0.42,
+        metalness: 0.62
       }),
       tire: new THREE.MeshStandardMaterial({
         color: COLORS.roverDark,
-        roughness: 0.72,
-        metalness: 0.08
+        map: rock.map,
+        normalMap: rock.normalMap,
+        normalScale: new THREE.Vector2(0.38, 0.38),
+        roughnessMap: rock.roughnessMap,
+        roughness: 0.84,
+        metalness: 0.04
       }),
       hub: new THREE.MeshStandardMaterial({
         color: COLORS.amber,
-        roughness: 0.42,
-        metalness: 0.34
+        map: roverMetal.map,
+        roughness: 0.3,
+        metalness: 0.58
       }),
       accent: new THREE.MeshStandardMaterial({
         color: COLORS.amber,
-        roughness: 0.44,
-        metalness: 0.22
+        map: roverMetal.map,
+        roughness: 0.34,
+        metalness: 0.42
       }),
       container: new THREE.MeshStandardMaterial({
-        color: 0x6a8796,
-        roughness: 0.54,
-        metalness: 0.12
+        color: 0x6f99a7,
+        map: roverTrim.map,
+        normalMap: roverTrim.normalMap,
+        normalScale: new THREE.Vector2(0.16, 0.16),
+        roughnessMap: roverTrim.roughnessMap,
+        metalnessMap: roverTrim.metalnessMap,
+        roughness: 0.48,
+        metalness: 0.35
       }),
       lens: new THREE.MeshStandardMaterial({
         color: 0x101a24,
@@ -687,16 +1095,15 @@ export class Rover {
         emissiveIntensity: 0,
         roughness: 0.2,
         metalness: 0.08
-      }),
-      headlightCone: new THREE.MeshBasicMaterial({
-        color: COLORS.headlight,
-        transparent: true,
-        opacity: 0,
-        depthWrite: false,
-        depthTest: true,
-        side: THREE.FrontSide,
-        blending: THREE.AdditiveBlending
       })
     };
   }
+}
+
+function shortestAngleDelta(from, to) {
+  return normalizeAngle(to - from);
+}
+
+function normalizeAngle(angle) {
+  return THREE.MathUtils.euclideanModulo(angle + Math.PI, TWO_PI) - Math.PI;
 }

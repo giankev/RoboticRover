@@ -4,6 +4,16 @@ import { CAMERA } from '../config/constants.js';
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const CAMERA_MODES = ['Follow', 'Orbit', 'Arm'];
+const FOLLOW_OFFSET = new THREE.Vector3(
+  CAMERA.followOffset.x,
+  CAMERA.followOffset.y,
+  CAMERA.followOffset.z
+);
+const FOLLOW_LOOK_AT_OFFSET = new THREE.Vector3(
+  CAMERA.lookAtOffset.x,
+  CAMERA.lookAtOffset.y,
+  CAMERA.lookAtOffset.z
+);
 const ORBIT_OFFSET = new THREE.Vector3(0, 5.2, 9.2);
 const ORBIT_TARGET_OFFSET = new THREE.Vector3(0, 1.35, -0.6);
 const ARM_CAMERA_OFFSET = new THREE.Vector3(3.2, 2.45, 2.65);
@@ -29,6 +39,8 @@ export class CameraManager {
 
     this.modeIndex = 0;
     this.mode = CAMERA_MODES[this.modeIndex];
+    this.temporaryModeIndex = null;
+    this.controlsEnabled = true;
 
     this.orbitControls = new OrbitControls(this.camera, domElement);
     this.orbitControls.enabled = false;
@@ -74,9 +86,46 @@ export class CameraManager {
   cycleMode(rover) {
     this.modeIndex = (this.modeIndex + 1) % CAMERA_MODES.length;
     this.mode = CAMERA_MODES[this.modeIndex];
-    this.orbitControls.enabled = this.mode === 'Orbit';
+    this.orbitControls.enabled = this.controlsEnabled && this.mode === 'Orbit';
     this.snapTo(rover);
     return this.mode;
+  }
+
+  setMode(mode, rover) {
+    const modeIndex = CAMERA_MODES.indexOf(mode);
+
+    if (modeIndex === -1) {
+      return this.mode;
+    }
+
+    this.modeIndex = modeIndex;
+    this.mode = CAMERA_MODES[this.modeIndex];
+    this.orbitControls.enabled = this.controlsEnabled && this.mode === 'Orbit';
+    this.snapTo(rover);
+    return this.mode;
+  }
+
+  setControlsEnabled(enabled) {
+    this.controlsEnabled = enabled;
+    this.orbitControls.enabled = enabled && this.mode === 'Orbit';
+  }
+
+  enterTemporaryMode(mode, rover) {
+    if (this.temporaryModeIndex === null) {
+      this.temporaryModeIndex = this.modeIndex;
+    }
+
+    return this.setMode(mode, rover);
+  }
+
+  exitTemporaryMode(rover) {
+    if (this.temporaryModeIndex === null) {
+      return this.mode;
+    }
+
+    const mode = CAMERA_MODES[this.temporaryModeIndex];
+    this.temporaryModeIndex = null;
+    return this.setMode(mode, rover);
   }
 
   snapTo(rover) {
@@ -132,14 +181,9 @@ export class CameraManager {
 
   getFollowPosition(rover, target) {
     const root = rover.root;
-    const offset = new THREE.Vector3(
-      CAMERA.followOffset.x,
-      CAMERA.followOffset.y,
-      CAMERA.followOffset.z
-    );
-
-    offset.applyAxisAngle(Y_AXIS, root.rotation.y);
-    target.copy(root.position).add(offset);
+    this.tempPosition.copy(FOLLOW_OFFSET);
+    this.tempPosition.applyAxisAngle(Y_AXIS, root.rotation.y);
+    target.copy(root.position).add(this.tempPosition);
     return target;
   }
 
@@ -181,14 +225,9 @@ export class CameraManager {
 
   getLookAtPosition(rover, target) {
     const root = rover.root;
-    const offset = new THREE.Vector3(
-      CAMERA.lookAtOffset.x,
-      CAMERA.lookAtOffset.y,
-      CAMERA.lookAtOffset.z
-    );
-
-    offset.applyAxisAngle(Y_AXIS, root.rotation.y);
-    target.copy(root.position).add(offset);
+    this.tempLookAt.copy(FOLLOW_LOOK_AT_OFFSET);
+    this.tempLookAt.applyAxisAngle(Y_AXIS, root.rotation.y);
+    target.copy(root.position).add(this.tempLookAt);
     return target;
   }
 

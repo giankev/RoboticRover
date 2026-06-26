@@ -36,20 +36,198 @@ canvas {
   outline: none;
 }
 
-.status-overlay {
+.mission-hud {
   position: absolute;
   top: 16px;
   left: 16px;
-  z-index: 2;
-  min-width: 156px;
-  padding: 10px 12px;
+  z-index: 3;
+  min-width: 245px;
+  padding: 9px 11px;
   border: 1px solid rgba(168, 232, 255, 0.28);
-  border-radius: 6px;
-  background: rgba(3, 9, 18, 0.68);
+  border-radius: 8px;
+  background: rgba(3, 10, 20, 0.74);
   color: #d9f7ff;
   font-size: 13px;
-  line-height: 1.55;
-  letter-spacing: 0;
+  line-height: 1.48;
+  letter-spacing: 0.01em;
   pointer-events: none;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.72);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.mission-hud__difficulty,
+.mission-hud__timer,
+.mission-hud__samples {
+  display: inline;
+  font-weight: 650;
+}
+
+.mission-hud__timer::before,
+.mission-hud__samples::before {
+  margin: 0 5px;
+  color: rgba(169, 221, 234, 0.62);
+  content: '•';
+}
+
+.mission-hud__status {
+  margin-top: 4px;
+  color: #c7f6ff;
+}
+
+.mission-hud__camera {
+  color: #a9ddea;
+  font-size: 12px;
+}
+
+.mission-hud.is-hidden {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.mission-hud__controls {
+  max-width: 280px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(168, 232, 255, 0.18);
+  color: #a9ddea;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.game-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 24%, rgba(83, 215, 247, 0.12), transparent 32rem),
+    rgba(1, 6, 15, 0.78);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 280ms ease;
+}
+
+.game-overlay.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.game-overlay__panel {
+  width: min(100%, 560px);
+  padding: clamp(28px, 6vw, 52px);
+  border: 1px solid rgba(158, 238, 255, 0.35);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(7, 25, 43, 0.96), rgba(3, 10, 22, 0.94));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48), inset 0 0 34px rgba(89, 221, 255, 0.05);
+  color: #e6fbff;
+  text-align: center;
+}
+
+.game-overlay__eyebrow {
+  margin: 0 0 10px;
+  color: #7de5fa;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+.game-overlay h1 {
+  margin: 0;
+  color: #f0fdff;
+  font-size: clamp(28px, 5vw, 46px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.game-overlay__message {
+  max-width: 430px;
+  margin: 18px auto 0;
+  color: #b9e1ea;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.game-overlay__loading {
+  margin-top: 28px;
+}
+
+.game-overlay__progress-track {
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(154, 240, 255, 0.25);
+  border-radius: 999px;
+  background: rgba(133, 224, 248, 0.08);
+}
+
+.game-overlay__progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #50d9f2, #c2fff4);
+  box-shadow: 0 0 16px rgba(117, 239, 255, 0.72);
+  transition: width 180ms ease;
+}
+
+.game-overlay__progress-label {
+  margin: 9px 0 0;
+  color: #8fcbd7;
+  font-size: 12px;
+}
+
+.game-overlay__actions {
+  display: grid;
+  gap: 10px;
+  margin: 28px auto 0;
+  max-width: 320px;
+}
+
+.game-overlay button {
+  min-height: 46px;
+  padding: 10px 18px;
+  border: 1px solid rgba(156, 236, 252, 0.45);
+  border-radius: 8px;
+  background: rgba(68, 182, 207, 0.14);
+  color: #e9fdff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.game-overlay button:hover,
+.game-overlay button:focus-visible {
+  border-color: #c6fbff;
+  background: rgba(91, 215, 239, 0.28);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.game-overlay button:disabled {
+  border-color: rgba(156, 236, 252, 0.16);
+  background: rgba(68, 182, 207, 0.05);
+  color: rgba(233, 253, 255, 0.38);
+  cursor: not-allowed;
+}
+
+.game-overlay__restart {
+  display: block;
+  width: min(100%, 320px);
+  margin: 28px auto 0;
+}
+
+@media (max-width: 560px) {
+  .mission-hud {
+    top: 10px;
+    left: 10px;
+    min-width: 0;
+    max-width: calc(100% - 20px);
+  }
+
+  .game-overlay {
+    padding: 14px;
+  }
 }

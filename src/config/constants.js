@@ -21,7 +21,15 @@ export const WORLD = {
   stalactiteCount: 38,
   stalagmiteCount: 52,
   pillarCount: 12,
-  sampleArea: { x: 15, z: -150, radius: 8 }
+  sampleArea: { x: 15, z: -150, radius: 8 },
+  sampleTargets: [
+    { x: -2.8, z: -24, pickupDirection: { x: -1, z: 0 } },
+    { x: 2.6, z: -58, pickupDirection: { x: 1, z: 0 } },
+    { x: -3.5, z: -94, pickupDirection: { x: -1, z: 0 } },
+    { x: 3.8, z: -126, pickupDirection: { x: 1, z: 0 } },
+    { x: -3.4, z: -162, pickupDirection: { x: -1, z: 0 } },
+    { x: 2.9, z: -194, pickupDirection: { x: 1, z: 0 } }
+  ]
 };
 
 export const ROVER = {
@@ -30,17 +38,71 @@ export const ROVER = {
   wheelRadius: 0.36,
   startPosition: { x: 0, y: 0, z: 14 },
   collisionHalfSize: { x: 1.45, y: 1.85, z: 1.2 },
-  headlightIntensity: 950,
-  headlightDistance: 78,
-  headlightAngle: 0.48
+  headlightIntensity: 1200,
+  headlightDistance: 92,
+  headlightAngle: 0.38,
+  headlightPenumbra: 0.38,
+  headlightDecay: 1.2
 };
 
 export const SCANNER = {
-  range: 15,
+  interactionDistance: 5.25,
+  alignDuration: 640,
   scanDuration: 1800,
   focusDuration: 420,
   failureDuration: 720
 };
+
+export const COLLECTION = {
+  interactionDistance: 3.4,
+  alignDuration: 680,
+  readyDuration: 720,
+  reachDuration: 940,
+  liftDuration: 760,
+  stowDuration: 440,
+  dropDuration: 460,
+  doorDuration: 280,
+  releaseGripperDuration: 140,
+  fallDuration: 210,
+  returnDuration: 440,
+  grabDistance: 0.16,
+  dropDistance: 0.18
+};
+
+export const GAME_STATES = Object.freeze({
+  LOADING: 'LOADING',
+  MENU: 'MENU',
+  PLAYING: 'PLAYING',
+  PAUSED: 'PAUSED',
+  MISSION_COMPLETE: 'MISSION_COMPLETE',
+  GAME_OVER: 'GAME_OVER'
+});
+
+export const MISSION = Object.freeze({
+  // Debug target: restore this to 6 for the final six-sample mission.
+  requiredSamples: 2
+});
+
+export const DIFFICULTIES = Object.freeze({
+  easy: Object.freeze({
+    id: 'easy',
+    label: 'Easy Mission',
+    requiredSamples: MISSION.requiredSamples,
+    timeLimitSeconds: 360,
+    scanDistance: 6.6,
+    collectionDistance: 4.2,
+    showExtendedHints: true
+  }),
+  hard: Object.freeze({
+    id: 'hard',
+    label: 'Hard Mission',
+    requiredSamples: MISSION.requiredSamples,
+    timeLimitSeconds: 210,
+    scanDistance: 4.6,
+    collectionDistance: 3.1,
+    showExtendedHints: false
+  })
+});
 
 export const COLORS = {
   background: 0x030813,

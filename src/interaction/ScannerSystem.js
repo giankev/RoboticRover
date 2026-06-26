@@ -8,6 +8,7 @@ export class ScannerSystem {
   constructor({ rover, targets }) {
     this.rover = rover;
     this.targets = targets;
+    this.interactionDistance = SCANNER.interactionDistance;
     this.group = new THREE.Group();
     this.group.name = 'ScannerSystem';
 
@@ -75,12 +76,23 @@ export class ScannerSystem {
       return;
     }
 
-    if (nearest.distance > SCANNER.range) {
+    if (nearest.distance > this.interactionDistance) {
       this.playFailure('Move closer to scan');
       return;
     }
 
     this.playSuccessfulScan(nearest.target);
+  }
+
+  setInteractionDistance(distance) {
+    this.interactionDistance = distance;
+  }
+
+  reset() {
+    this.hideEffects();
+    this.activeTarget = null;
+    this.isScanning = false;
+    this.statusLabel = 'Ready';
   }
 
   update() {
@@ -95,50 +107,73 @@ export class ScannerSystem {
   async playSuccessfulScan(target) {
     this.isScanning = true;
     this.activeTarget = target;
-    this.statusLabel = 'Scanning';
-    this.setTargetState(target, 'scanning');
+    this.statusLabel = 'Aligning target';
+    this.getTargetPosition(target, this.targetPosition);
 
     this.effectState.beamOpacity = 0;
     this.effectState.ringOpacity = 0;
     this.effectState.ringScale = 0.2;
     this.effectState.targetBoost = 0;
 
-    this.beam.visible = true;
-    this.pulseRing.visible = true;
-    this.positionEffects(target);
+    try {
+      await this.rover.alignToScanTarget(this.targetPosition, SCANNER.alignDuration);
+      this.getTargetPosition(target, this.targetPosition);
+      this.statusLabel = 'Scanning';
+      this.setTargetState(target, 'scanning');
 
-    this.rover.animateScannerFocus(
-      this.getTargetPosition(target, this.targetPosition),
-      SCANNER.focusDuration
-    );
+      await Promise.all([
+        this.rover.animateScannerFocus(this.targetPosition, SCANNER.focusDuration),
+        this.rover.animateArmScan(this.targetPosition)
+      ]);
 
-    await Promise.all([
-      this.tweenEffect(
-        {
-          beamOpacity: 0.14,
-          ringOpacity: 0.58,
-          ringScale: 2.45,
-          targetBoost: 1.7
-        },
-        SCANNER.scanDuration,
-        TWEEN.Easing.Cubic.InOut
-      ),
-      this.tweenScanRing(SCANNER.scanDuration)
-    ]);
+      this.beam.visible = true;
+      this.pulseRing.visible = true;
+      this.positionEffects(target);
 
-    this.setTargetState(target, 'scanned');
-    this.statusLabel = 'Target scanned';
-    this.hideEffects();
-    this.activeTarget = null;
-    await this.rover.resetScannerFocus(420);
-    this.isScanning = false;
+      await Promise.all([
+        this.tweenEffect(
+          {
+            beamOpacity: 0.14,
+            ringOpacity: 0.58,
+            ringScale: 2.45,
+            targetBoost: 1.7
+          },
+          SCANNER.scanDuration,
+          TWEEN.Easing.Cubic.InOut
+        ),
+        this.tweenScanRing(SCANNER.scanDuration)
+      ]);
+
+      this.setTargetState(target, 'scanned');
+      this.statusLabel = 'Target scanned';
+    } catch {
+      if (target.scanState === 'scanning') {
+        this.setTargetState(target, 'unscanned');
+      }
+      this.statusLabel = 'Scan interrupted';
+    } finally {
+      this.hideEffects();
+      this.activeTarget = null;
+
+      try {
+        await Promise.all([
+          this.rover.resetScannerFocus(420),
+          this.rover.resetArmScan()
+        ]);
+      } finally {
+        this.isScanning = false;
+      }
+    }
   }
 
   async playFailure(message) {
     this.isScanning = true;
     this.statusLabel = message;
-    await this.rover.playScannerFailure(SCANNER.failureDuration);
-    this.isScanning = false;
+    try {
+      await this.rover.playScannerFailure(SCANNER.failureDuration, { includeArm: false });
+    } finally {
+      this.isScanning = false;
+    }
   }
 
   findNearestUnscannedTarget() {
@@ -165,11 +200,34 @@ export class ScannerSystem {
     target.scanState = state;
     target.mesh.userData.scanState = state;
 
+    if (target.sampleGroup) {
+      target.sampleGroup.userData.scanState = state;
+    }
+
+    if (target.sample) {
+      target.sample.scanState = state;
+      target.sample.scanned = state === 'scanned';
+      if (target.sample.pickupAnchor) {
+        target.sample.pickupAnchor.userData.scanState = state;
+      }
+      target.sample.mesh.userData.scanState = state;
+    }
+
     if (state === 'scanned') {
       target.material.color.setHex(COLORS.scannerScanned);
       target.material.emissive.setHex(COLORS.scannerScanned);
       target.light.color.setHex(COLORS.scannerScanned);
       target.scanBoost = 0.7;
+      target.mesh.userData.sampleState = 'scanned';
+
+      if (target.sampleMaterial) {
+        target.sampleMaterial.color.setHex(0x9fffea);
+        target.sampleMaterial.emissive.setHex(COLORS.scannerScanned);
+      }
+
+      if (target.sampleLight) {
+        target.sampleLight.color.setHex(COLORS.scannerScanned);
+      }
 
       if (target.scanMarker) {
         target.scanMarker.material.color.setHex(COLORS.scannerScanned);
@@ -242,6 +300,16 @@ export class ScannerSystem {
   }
 
   getTargetPosition(target, destination) {
+    if (target.sample?.pickupAnchor) {
+      target.sample.pickupAnchor.getWorldPosition(destination);
+      return destination;
+    }
+
+    if (target.sample?.anchorPosition) {
+      destination.copy(target.sample.anchorPosition);
+      return destination;
+    }
+
     target.mesh.getWorldPosition(destination);
     return destination;
   }

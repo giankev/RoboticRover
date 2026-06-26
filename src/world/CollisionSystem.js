@@ -58,7 +58,13 @@ export class CollisionSystem {
     }
 
     const roverBox = this.getRoverBox(position);
-    return !this.colliders.some((collider) => roverBox.intersectsBox(collider.box));
+    for (const collider of this.colliders) {
+      if (roverBox.intersectsBox(collider.box)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   getRoverBox(position) {

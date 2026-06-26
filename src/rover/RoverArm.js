@@ -1,11 +1,18 @@
 import * as THREE from 'three';
 import * as TWEEN from '@tweenjs/tween.js';
 import { COLORS } from '../config/constants.js';
+import { getProceduralTextures } from '../world/ProceduralTextures.js';
 
 const ARM = {
   upperLength: 1.08,
   forearmLength: 0.92,
-  gripperReach: 0.34
+  gripperReach: 0.34,
+  gripperHoldReach: 0.38
+};
+
+const SCAN_BASE_LIMITS = {
+  min: -0.55,
+  max: 1.55
 };
 
 const ARM_POSES = {
@@ -32,8 +39,60 @@ const ARM_POSES = {
     wristPitch: -0.22,
     wristRoll: 0.18,
     gripper: 1
+  },
+  scan: {
+    baseYaw: 0.92,
+    shoulderPitch: 0.52,
+    elbowBend: -0.72,
+    wristPitch: -0.42,
+    wristRoll: 0.08,
+    gripper: 0.42
+  },
+  collectReady: {
+    baseYaw: 1.2,
+    shoulderPitch: 0.86,
+    elbowBend: -0.78,
+    wristPitch: -0.42,
+    wristRoll: 0.04,
+    gripper: 1
+  },
+  collectGrab: {
+    baseYaw: 1.35,
+    shoulderPitch: -0.24,
+    elbowBend: -0.58,
+    wristPitch: 0.02,
+    wristRoll: 0.02,
+    gripper: 1
+  },
+  collectLift: {
+    baseYaw: 1.35,
+    shoulderPitch: 0.92,
+    elbowBend: -0.84,
+    wristPitch: -0.5,
+    wristRoll: 0.02,
+    gripper: 0
+  },
+  containerStow: {
+    baseYaw: -2.52,
+    shoulderPitch: 1.35,
+    elbowBend: -1.65,
+    wristPitch: -0.1,
+    wristRoll: -0.18,
+    gripper: 0
+  },
+  containerDrop: {
+    baseYaw: -2.52,
+    shoulderPitch: 1.2,
+    elbowBend: -2.0,
+    wristPitch: 0,
+    wristRoll: -0.18,
+    gripper: 0
   }
 };
+
+const ARM_TARGET_LOCAL = new THREE.Vector3();
+const ARM_TARGET_DIRECTION = new THREE.Vector3();
+const COLLECTION_TARGET_LOCAL = new THREE.Vector3();
 
 export class RoverArm {
   constructor(materials) {
@@ -114,7 +173,21 @@ export class RoverArm {
 
     this.leftClaw = this.createClaw('LeftClaw', -0.15, 1);
     this.rightClaw = this.createClaw('RightClaw', 0.15, -1);
-    this.gripper.add(this.leftClaw, this.rightClaw);
+
+    this.gripperHoldAnchor = new THREE.Object3D();
+    this.gripperHoldAnchor.name = 'GripperHoldAnchor';
+    this.gripperHoldAnchor.position.set(ARM.gripperHoldReach, 0, 0);
+
+    this.gripperTipAnchor = new THREE.Object3D();
+    this.gripperTipAnchor.name = 'GripperTipAnchor';
+    this.gripperTipAnchor.position.set(0.5, 0, 0);
+
+    this.gripper.add(
+      this.leftClaw,
+      this.rightClaw,
+      this.gripperHoldAnchor,
+      this.gripperTipAnchor
+    );
   }
 
   setIdlePose() {
@@ -126,11 +199,11 @@ export class RoverArm {
     this.applyPoseState();
   }
 
-  animateToIdle() {
+  animateToIdle(duration = 900) {
     this.sequenceToken += 1;
     this.status = 'Idle';
     this.gripperOpen = false;
-    return this.tweenToState(ARM_POSES.idle, 900);
+    return this.tweenToState(ARM_POSES.idle, duration);
   }
 
   animateToReady() {
@@ -147,13 +220,13 @@ export class RoverArm {
     return this.tweenToState(ARM_POSES.reach, 1050);
   }
 
-  openGripper() {
+  openGripper(duration = 300) {
     this.sequenceToken += 1;
     if (this.status === 'Inspecting') {
       this.status = 'Ready';
     }
     this.gripperOpen = true;
-    return this.tweenToState({ gripper: 1 }, 300, TWEEN.Easing.Cubic.Out);
+    return this.tweenToState({ gripper: 1 }, duration, TWEEN.Easing.Cubic.Out);
   }
 
   closeGripper() {
@@ -195,6 +268,143 @@ export class RoverArm {
     if (!this.isSequenceActive(token)) return;
 
     this.status = 'Idle';
+  }
+
+  async animateToScanPose(worldPosition) {
+    const token = this.sequenceToken + 1;
+    this.sequenceToken = token;
+    this.status = 'Scan ready';
+    this.gripperOpen = true;
+
+    const scanPose = this.getScanPose(worldPosition);
+
+    await this.tweenToState(
+      {
+        ...ARM_POSES.ready,
+        baseYaw: THREE.MathUtils.lerp(this.poseState.baseYaw, scanPose.baseYaw, 0.5),
+        gripper: 0.18
+      },
+      520
+    );
+    if (!this.isSequenceActive(token)) return;
+
+    await this.tweenToState(scanPose, 760);
+    if (!this.isSequenceActive(token)) return;
+
+    this.status = 'Scanning';
+  }
+
+  async returnFromScan() {
+    const token = this.sequenceToken + 1;
+    this.sequenceToken = token;
+    this.status = 'Returning';
+    this.gripperOpen = false;
+
+    await this.tweenToState(ARM_POSES.idle, 780);
+    if (!this.isSequenceActive(token)) return;
+
+    this.status = 'Idle';
+  }
+
+  animateToCollectionReady(worldPosition, duration = 720) {
+    this.sequenceToken += 1;
+    this.status = 'Collection ready';
+    this.gripperOpen = true;
+    return this.tweenToState(
+      this.getCollectionPose(worldPosition, ARM_POSES.collectReady),
+      duration
+    );
+  }
+
+  animateToCollectionGrab(worldPosition, duration = 940) {
+    this.sequenceToken += 1;
+    this.status = 'Reaching sample';
+    this.gripperOpen = true;
+    return this.tweenToState(
+      this.getCollectionApproachPose(worldPosition),
+      duration
+    );
+  }
+
+  animateToCollectionLift(worldPosition, duration = 760) {
+    this.sequenceToken += 1;
+    this.status = 'Lifting sample';
+    this.gripperOpen = false;
+    return this.tweenToState(
+      this.getCollectionPose(worldPosition, ARM_POSES.collectLift),
+      duration
+    );
+  }
+
+  animateToContainerStow(duration = 900) {
+    this.sequenceToken += 1;
+    this.status = 'Stowing sample';
+    this.gripperOpen = false;
+    return this.tweenToState(ARM_POSES.containerStow, duration);
+  }
+
+  animateToContainerDrop(worldPosition, duration = 620) {
+    this.sequenceToken += 1;
+    this.status = 'Hovering over container';
+    this.gripperOpen = false;
+    return this.tweenToState(
+      this.getCollectionApproachPose(worldPosition, 0),
+      duration
+    );
+  }
+
+  playScanFailure(duration = 720) {
+    this.sequenceToken += 1;
+    this.stopActiveTween();
+
+    const previousStatus = this.status;
+    const previousPose = { ...this.poseState };
+    const state = { progress: 0 };
+    this.status = 'Scan failed';
+
+    return new Promise((resolve) => {
+      this.resolveActiveTween = resolve;
+      this.activeTween = new TWEEN.Tween(state, true)
+        .to({ progress: 1 }, duration)
+        .easing(TWEEN.Easing.Cubic.Out)
+        .onUpdate(() => {
+          const shake = Math.sin(state.progress * Math.PI * 7) * (1 - state.progress);
+          this.poseState.baseYaw = previousPose.baseYaw + shake * 0.16;
+          this.poseState.wristRoll = previousPose.wristRoll - shake * 0.28;
+          this.poseState.gripper = THREE.MathUtils.clamp(
+            previousPose.gripper + Math.abs(shake) * 0.35,
+            0,
+            1
+          );
+          this.applyPoseState();
+        })
+        .onComplete(() => {
+          Object.assign(this.poseState, previousPose);
+          this.gripperOpen = previousPose.gripper > 0.5;
+          this.applyPoseState();
+          this.activeTween = null;
+          this.resolveActiveTween = null;
+          this.status = previousStatus;
+          resolve();
+        })
+        .start();
+    });
+  }
+
+  getScannerOrigin(target = new THREE.Vector3()) {
+    target.set(0.38, 0, 0);
+    this.gripper.localToWorld(target);
+    return target;
+  }
+
+  getGripperTipPosition(target = new THREE.Vector3()) {
+    this.gripperTipAnchor.getWorldPosition(target);
+    return target;
+  }
+
+  getGripperHoldPosition(target = new THREE.Vector3()) {
+    this.gripperHoldAnchor.getWorldPosition(target);
+    return target;
   }
 
   update(delta) {
@@ -248,6 +458,94 @@ export class RoverArm {
     this.wrist.rotation.z = this.poseState.wristPitch;
     this.wrist.rotation.x = this.poseState.wristRoll;
     this.setClawOpenAmount(this.poseState.gripper);
+  }
+
+  getScanPose(worldPosition) {
+    const baseYaw = THREE.MathUtils.clamp(
+      this.getTargetBaseYaw(worldPosition),
+      SCAN_BASE_LIMITS.min,
+      SCAN_BASE_LIMITS.max
+    );
+
+    return {
+      ...ARM_POSES.scan,
+      baseYaw
+    };
+  }
+
+  getCollectionPose(worldPosition, basePose) {
+    return {
+      ...basePose,
+      baseYaw: THREE.MathUtils.clamp(
+        this.getTargetBaseYaw(worldPosition),
+        -1.25,
+        1.65
+      )
+    };
+  }
+
+  getCollectionApproachPose(worldPosition, gripper = 1) {
+    const baseYaw = this.getTargetBaseYaw(worldPosition);
+    const previousYaw = this.root.rotation.y;
+
+    // The arm links rotate in their local X/Y plane. Temporarily aim the base
+    // at the target to solve that plane, then restore the displayed pose until
+    // the tween begins.
+    this.root.rotation.y = baseYaw;
+    this.root.updateWorldMatrix(true, false);
+    COLLECTION_TARGET_LOCAL.copy(worldPosition);
+    this.root.worldToLocal(COLLECTION_TARGET_LOCAL);
+    this.root.rotation.y = previousYaw;
+    this.root.updateWorldMatrix(true, false);
+
+    const shoulderHeight = 0.36;
+    const upperLength = ARM.upperLength;
+    const forearmToHoldLength =
+      ARM.forearmLength + ARM.gripperReach + ARM.gripperHoldReach;
+    const targetX = COLLECTION_TARGET_LOCAL.x;
+    const targetY = COLLECTION_TARGET_LOCAL.y - shoulderHeight;
+    const targetDistance = Math.hypot(targetX, targetY);
+    const minReach = Math.abs(upperLength - forearmToHoldLength) + 0.001;
+    const maxReach = upperLength + forearmToHoldLength - 0.001;
+    const solvedDistance = THREE.MathUtils.clamp(
+      targetDistance,
+      minReach,
+      maxReach
+    );
+    const elbowCosine = THREE.MathUtils.clamp(
+      (solvedDistance ** 2 - upperLength ** 2 - forearmToHoldLength ** 2) /
+        (2 * upperLength * forearmToHoldLength),
+      -1,
+      1
+    );
+    const elbowBend = -Math.acos(elbowCosine);
+    const shoulderPitch =
+      Math.atan2(targetY, targetX) -
+      Math.atan2(
+        forearmToHoldLength * Math.sin(elbowBend),
+        upperLength + forearmToHoldLength * Math.cos(elbowBend)
+      );
+
+    return {
+      ...ARM_POSES.collectGrab,
+      baseYaw,
+      shoulderPitch,
+      elbowBend,
+      wristPitch: 0,
+      wristRoll: 0.02,
+      gripper
+    };
+  }
+
+  getTargetBaseYaw(worldPosition) {
+    ARM_TARGET_LOCAL.copy(worldPosition);
+
+    if (this.root.parent) {
+      this.root.parent.worldToLocal(ARM_TARGET_LOCAL);
+    }
+
+    ARM_TARGET_DIRECTION.copy(ARM_TARGET_LOCAL).sub(this.root.position);
+    return Math.atan2(-ARM_TARGET_DIRECTION.z, ARM_TARGET_DIRECTION.x);
   }
 
   setClawOpenAmount(amount) {
@@ -354,26 +652,43 @@ export class RoverArm {
 }
 
 export function createArmMaterials() {
+  const { roverMetal, roverTrim, rock } = getProceduralTextures();
+
   return {
     arm: new THREE.MeshStandardMaterial({
-      color: COLORS.roverBody,
-      roughness: 0.52,
-      metalness: 0.18
+      color: 0xd2e3e7,
+      map: roverMetal.map,
+      normalMap: roverMetal.normalMap,
+      normalScale: new THREE.Vector2(0.16, 0.16),
+      roughnessMap: roverMetal.roughnessMap,
+      metalnessMap: roverMetal.metalnessMap,
+      roughness: 0.4,
+      metalness: 0.46
     }),
     trim: new THREE.MeshStandardMaterial({
-      color: COLORS.roverTrim,
-      roughness: 0.6,
-      metalness: 0.2
+      color: 0x344d5a,
+      map: roverTrim.map,
+      normalMap: roverTrim.normalMap,
+      normalScale: new THREE.Vector2(0.14, 0.14),
+      roughnessMap: roverTrim.roughnessMap,
+      metalnessMap: roverTrim.metalnessMap,
+      roughness: 0.46,
+      metalness: 0.56
     }),
     accent: new THREE.MeshStandardMaterial({
       color: COLORS.amber,
-      roughness: 0.46,
-      metalness: 0.24
+      map: roverMetal.map,
+      roughness: 0.32,
+      metalness: 0.46
     }),
     claw: new THREE.MeshStandardMaterial({
       color: COLORS.roverDark,
-      roughness: 0.5,
-      metalness: 0.32
+      map: rock.map,
+      normalMap: rock.normalMap,
+      normalScale: new THREE.Vector2(0.2, 0.2),
+      roughnessMap: rock.roughnessMap,
+      roughness: 0.56,
+      metalness: 0.36
     })
   };
 }
