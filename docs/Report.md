@@ -8,6 +8,21 @@ The project is designed for an Interactive Computer Graphics course. Its focus i
 
 All models are built procedurally or from Three.js primitives. All animations are authored in JavaScript using transforms, object hierarchy, dynamic parenting, and `@tweenjs/tween.js` interpolation. No external animation clips are imported.
 
+## Gameplay Objective and Difficulty
+
+The player begins at the loading screen and then chooses Easy Mission or Hard Mission from a compact menu. During a mission, the player drives through the cave, locates mineral sample targets, scans them with `X`, and collects scanned samples with `E`. A sample counts toward the objective only after the robotic arm stores it in the rover inventory container.
+
+The current repository configuration requires **2 stored samples**. The mission is won when the required number of samples is stored before the timer reaches zero. If the timer expires first, the game enters the Time Expired / Mission Failed state.
+
+The difficulty settings are defined in `src/config/constants.js`:
+
+| Mode | Required Samples | Timer | Scan Range | Collection Range | HUD Hints |
+| --- | --- | --- | --- | --- | --- |
+| Easy Mission | 2 | 360 seconds | 6.6 units | 4.2 units | Extended |
+| Hard Mission | 2 | 210 seconds | 4.6 units | 3.1 units | Compact |
+
+Easy Mission is more forgiving because it gives the player a longer timer, larger scan range, larger collection range, and more complete HUD hints. Hard Mission keeps the same objective count but uses stricter timing/ranges and a more compact HUD.
+
 ## Environment and Tools
 
 - **Language:** JavaScript modules.

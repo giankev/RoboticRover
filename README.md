@@ -1,6 +1,8 @@
 # CryoRover - Interactive Europa Ice Cave Explorer
 
-CryoRover is an interactive Three.js/WebGL scene set inside an icy cave on Europa. The player drives a scientific rover through the cave, scans mineral targets, and collects sample fragments with a robotic arm. The project demonstrates hierarchical modeling, local transformations, lighting, procedural textures, user interaction, camera control, and JavaScript-authored animations. All rover, scanner, arm, gripper, inventory, and environmental animations are implemented in code; no imported animation clips are used.
+CryoRover is an interactive 3D graphics project built with Three.js/WebGL. The player controls a robotic rover inside an icy cave on Europa, explores the cave route, scans mineral samples, and collects them before the mission timer runs out.
+
+The rover includes headlights, multiple camera modes, a hierarchical robotic arm, a scanner, and an onboard sample storage container. The project demonstrates hierarchical modeling, local transformations, texture/material usage, lighting, user interaction, and JavaScript-authored animations. No imported animation clips are used.
 
 ## Project Overview
 
@@ -17,6 +19,17 @@ No screenshots are committed yet. See [docs/screenshots/README.md](docs/screensh
 - `scanner.png`: scanner effect aimed at a sample.
 - `collection.png`: robotic arm collecting or depositing a sample.
 - `menu.png` optional: clean Easy/Hard/Restart menu.
+
+## Gameplay / Objective
+
+Choose Easy Mission or Hard Mission, drive through the cave, locate mineral samples, press `X` to scan a nearby sample, then press `E` to collect the scanned sample with the robotic arm. A sample counts only after the arm stores it in the rover inventory. Win by storing the required samples before the timer expires; lose if time runs out first.
+
+Current mission configuration:
+
+| Mode | Objective | Timer | Scan Range | Collection Range | HUD Hints |
+| --- | --- | --- | --- | --- | --- |
+| Easy Mission | 2 samples | 6:00 | 6.6 units | 4.2 units | Extended |
+| Hard Mission | 2 samples | 3:30 | 4.6 units | 3.1 units | Compact |
 
 ## Main Features
 
@@ -51,6 +64,10 @@ No screenshots are committed yet. See [docs/screenshots/README.md](docs/screensh
 
 In Orbit camera mode, drag the mouse to rotate around the rover and use the mouse wheel to zoom.
 
+## Menu Behavior
+
+The loading screen appears first, then the main menu shows only Easy Mission, Hard Mission, and Restart Mission. During gameplay, `M` opens/closes the same mission menu. Restart Mission restarts the current selected difficulty and is available after a mission profile has been selected.
+
 ## How To Run
 
 ```bash
@@ -70,12 +87,19 @@ To create a production build:
 npm run build
 ```
 
+To preview the production build locally:
+
+```bash
+npm run preview
+```
+
 On Windows PowerShell, use `npm.cmd` if plain `npm` is blocked:
 
 ```bash
 npm.cmd install
 npm.cmd run dev
 npm.cmd run build
+npm.cmd run preview
 ```
 
 ## Technologies Used
