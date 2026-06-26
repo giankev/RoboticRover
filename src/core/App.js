@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as TWEEN from '@tweenjs/tween.js';
-import { GAME_STATES, MISSION } from '../config/constants.js';
+import { DEBUG_PERFORMANCE, GAME_STATES, MISSION } from '../config/constants.js';
 import { InputController } from '../interaction/InputController.js';
 import { SampleCollectionSystem } from '../interaction/SampleCollectionSystem.js';
 import { ScannerSystem } from '../interaction/ScannerSystem.js';
@@ -86,7 +86,9 @@ export class App {
   }
 
   update(time) {
-    const delta = Math.min(this.clock.getDelta(), 0.05);
+    const rawDelta = this.clock.getDelta();
+    this.reportFrameGap(rawDelta);
+    const delta = Math.min(rawDelta, 0.05);
 
     const movement = !this.isGameplayActive() || this.isInteractionLocked()
       ? { throttle: 0, turn: 0 }
@@ -112,6 +114,31 @@ export class App {
     this.updateStatusOverlay();
 
     this.renderer.render(this.scene, this.cameraManager.camera);
+  }
+
+  reportFrameGap(delta) {
+    if (!DEBUG_PERFORMANCE || delta <= 0.12) {
+      return;
+    }
+
+    console.warn('[perf] frame gap', {
+      gapMs: Number((delta * 1000).toFixed(1)),
+      gameState: this.game?.state ?? 'initializing',
+      action: this.getActiveActionLabel(),
+      camera: this.cameraManager?.modeLabel ?? 'unknown'
+    });
+  }
+
+  getActiveActionLabel() {
+    if (this.collector?.isCollecting) {
+      return `collection:${this.collector.state}:${this.collector.statusLabel}`;
+    }
+
+    if (this.scanner?.isScanning) {
+      return `scan:${this.scanner.statusLabel}`;
+    }
+
+    return 'idle';
   }
 
   resetRover() {

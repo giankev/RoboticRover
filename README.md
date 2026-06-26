@@ -118,7 +118,7 @@ npm.cmd run preview
 - Hierarchical transformations for rover body, wheels, mast, antenna, headlights, inventory, arm joints, wrist, gripper, and claws.
 - GPU-accelerated WebGL real-time rasterization, not ray tracing.
 - PBR-style `MeshStandardMaterial` and `MeshPhysicalMaterial` surfaces with procedural texture maps.
-- Shadow mapping from the main cave light and rover headlights.
+- Shadow mapping from the main cave light; rover headlights remain dynamic spotlights without extra headlight shadow maps for smoother toggling.
 - Emissive materials and small point lights for crystals and collectible samples.
 - Fog and cold blue lighting for Europa cave atmosphere.
 - Lightweight glossy puddle/reflection approximation through material response, not planar ray-traced reflections.
@@ -142,4 +142,3 @@ The longer technical report and user manual is available here:
 ## GitHub Pages
 
 Link: https://giankev.github.io/RoboticRover/
-

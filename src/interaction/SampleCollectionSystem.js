@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COLLECTION } from '../config/constants.js';
+import { COLLECTION, DEBUG_PERFORMANCE } from '../config/constants.js';
 
 export class SampleCollectionSystem {
   constructor({
@@ -68,6 +68,9 @@ export class SampleCollectionSystem {
 
   async playCollectionSequence(target) {
     const sampleObject = target.sample.group;
+    const profiler = DEBUG_PERFORMANCE
+      ? createCollectionProfiler(target.sample.id ?? target.mesh.name ?? 'sample')
+      : null;
     let sampleAttachment = null;
     let sampleAttached = false;
     let sampleReleased = false;
@@ -81,6 +84,7 @@ export class SampleCollectionSystem {
     this.setState('aligning', 'Aligning sample.');
 
     try {
+      profiler?.mark('start');
       this.onCollectionStart();
       this.getSampleWorldPosition(target, this.samplePosition);
 
@@ -89,15 +93,19 @@ export class SampleCollectionSystem {
         COLLECTION.alignDuration
       );
       this.getSampleWorldPosition(target, this.samplePosition);
+      profiler?.mark('aligned');
 
       this.setState('pre-grasp', 'Positioning arm.');
       await this.rover.animateArmCollectionReady(this.samplePosition);
+      profiler?.mark('arm-ready');
 
       this.setState('opening-gripper', 'Opening gripper.');
       await this.rover.openArmGripper();
+      profiler?.mark('gripper-open');
 
       this.setState('final-approach', 'Reaching sample.');
       await this.rover.animateArmCollectionGrab(this.samplePosition);
+      profiler?.mark('grab-pose');
 
       const grabDistance = this.rover.getGripperHoldDistanceTo(this.samplePosition);
 
@@ -108,11 +116,14 @@ export class SampleCollectionSystem {
       this.setState('grasping', 'Closing gripper.');
       await this.rover.closeArmGripper();
       sampleAttachment = this.captureSampleTransform(sampleObject);
+      profiler?.mark('before-attach-gripper');
       this.rover.attachSampleToGripper(sampleObject);
+      profiler?.mark('after-attach-gripper');
       sampleAttached = true;
 
       this.setState('lifting', 'Lifting sample.');
       await this.rover.animateArmCollectionLift(this.samplePosition);
+      profiler?.mark('lifted');
 
       this.setState('pre-drop', 'Opening hatch.');
       // The raised stow pose remains outside the tray, so it can move while the
@@ -123,9 +134,11 @@ export class SampleCollectionSystem {
         this.rover.openContainerDoor()
       ]);
       doorOpened = true;
+      profiler?.mark('hatch-open');
 
       this.setState('dropping', 'Moving to container.');
       await this.rover.animateArmToContainerDrop();
+      profiler?.mark('container-drop-pose');
 
       const dropDistance = this.rover.getGripperHoldDistanceToContainerDropHover();
 
@@ -137,7 +150,9 @@ export class SampleCollectionSystem {
       await this.rover.openArmGripper(COLLECTION.releaseGripperDuration);
 
       this.setState('releasing', 'Releasing sample.');
+      profiler?.mark('before-release-drop');
       this.rover.releaseSampleForDrop(sampleObject);
+      profiler?.mark('after-release-drop');
       sampleAttached = false;
       sampleReleased = true;
 
@@ -149,8 +164,11 @@ export class SampleCollectionSystem {
       if (!fallCompleted) {
         throw new CollectionAbort('Sample release interrupted.');
       }
+      profiler?.mark('sample-fall-complete');
 
+      profiler?.mark('before-deposit');
       this.rover.depositSampleInContainer(sampleObject);
+      profiler?.mark('after-deposit');
       sampleReleased = false;
       sampleDeposited = true;
 
@@ -168,6 +186,7 @@ export class SampleCollectionSystem {
 
       this.setState('returning', 'Returning arm.');
       await this.rover.returnArmToIdle(COLLECTION.returnDuration);
+      profiler?.mark('arm-returned');
 
       completed = true;
       this.setState('complete', 'Sample stored.');
@@ -208,6 +227,7 @@ export class SampleCollectionSystem {
       this.isCollecting = false;
       this.state = 'idle';
       this.onCollectionEnd({ completed, sampleDeposited, status: this.statusLabel });
+      profiler?.finish({ completed, sampleDeposited, status: this.statusLabel });
     }
   }
 
@@ -308,7 +328,7 @@ export class SampleCollectionSystem {
       return;
     }
 
-    transform.parent.updateWorldMatrix(true, true);
+    transform.parent.updateWorldMatrix(true, false);
     transform.parent.attach(sampleObject);
     sampleObject.position.copy(transform.position);
     sampleObject.quaternion.copy(transform.quaternion);
@@ -362,3 +382,28 @@ export class SampleCollectionSystem {
 }
 
 class CollectionAbort extends Error {}
+
+function createCollectionProfiler(sampleId) {
+  const startTime = performance.now();
+  let previousTime = startTime;
+  const marks = [];
+
+  return {
+    mark(label) {
+      const now = performance.now();
+      marks.push({
+        label,
+        stepMs: Number((now - previousTime).toFixed(2)),
+        totalMs: Number((now - startTime).toFixed(2))
+      });
+      previousTime = now;
+    },
+    finish(summary) {
+      const totalMs = Number((performance.now() - startTime).toFixed(2));
+      console.groupCollapsed(`[perf] collection:${sampleId} ${totalMs}ms`);
+      console.table(marks);
+      console.info('[perf] collection summary', summary);
+      console.groupEnd();
+    }
+  };
+}

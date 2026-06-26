@@ -143,7 +143,7 @@ The lighting rig is designed for a cold Europa cave mood while keeping gameplay 
 - selected landmark crystals and mission targets add local glow;
 - rover headlights are functional `SpotLight` objects attached to the rover.
 
-The rover headlights start off and can be toggled with `F`. They use a controlled cone angle, penumbra, and distance to brighten the cave ahead without flooding the whole scene. The visible headlight geometry is limited to the lenses; there are no solid beam meshes.
+The rover headlights start off and can be toggled with `F`. They use a controlled cone angle, penumbra, and distance to brighten the cave ahead without flooding the whole scene. The spotlight objects stay resident at zero intensity when off, and their own shadow maps are disabled so toggling headlights does not trigger expensive runtime shadow setup. The visible headlight geometry is limited to the lenses; there are no solid beam meshes.
 
 Fog is applied through the Three.js scene fog setting. It gives depth to the long cave and helps the far chamber fade into a cold atmosphere.
 
@@ -228,6 +228,7 @@ The project avoids expensive per-frame work:
 - procedural textures are shared;
 - camera, scanner, rover, and target systems reuse temporary vectors;
 - local point lights are limited to landmark crystals and mission targets;
+- rover headlights toggle intensity instead of rebuilding or re-enabling light/shadow resources;
 - collision exits early when an intersection is found;
 - stored samples are hidden inside the storage group after the visible drop;
 - renderer pixel ratio is capped for consistent browser performance.

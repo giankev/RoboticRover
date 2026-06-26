@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as TWEEN from '@tweenjs/tween.js';
-import { COLLECTION, COLORS, ROVER } from '../config/constants.js';
+import { COLLECTION, COLORS, DEBUG_PERFORMANCE, ROVER } from '../config/constants.js';
 import { RoverAnimations } from './RoverAnimations.js';
 import { RoverArm, createArmMaterials } from './RoverArm.js';
 import { getProceduralTextures } from '../world/ProceduralTextures.js';
@@ -329,14 +329,14 @@ export class Rover {
   }
 
   attachSampleToGripper(sampleObject) {
-    this.root.updateWorldMatrix(true, true);
+    this.arm.gripperHoldAnchor.updateWorldMatrix(true, false);
     sampleObject.updateWorldMatrix(true, true);
     this.arm.gripperHoldAnchor.attach(sampleObject);
     sampleObject.userData.heldByGripper = true;
   }
 
   releaseSampleForDrop(sampleObject) {
-    this.root.updateWorldMatrix(true, true);
+    this.sampleContainer.updateWorldMatrix(true, false);
     sampleObject.updateWorldMatrix(true, true);
     this.sampleContainer.attach(sampleObject);
     sampleObject.visible = true;
@@ -345,7 +345,7 @@ export class Rover {
 
   animateSampleFallIntoContainer(sampleObject, duration = COLLECTION.fallDuration) {
     this.stopSampleFallTween();
-    this.sampleContainer.updateWorldMatrix(true, true);
+    this.sampleContainer.updateWorldMatrix(true, false);
 
     const targetLocal = this.sampleContainer.worldToLocal(
       this.getContainerDropPosition(this.sampleDropTarget)
@@ -575,14 +575,20 @@ export class Rover {
   }
 
   toggleHeadlights() {
+    const startTime = DEBUG_PERFORMANCE ? performance.now() : 0;
     this.headlightsEnabled = !this.headlightsEnabled;
     this.headlightTargetIntensity = this.headlightsEnabled ? ROVER.headlightIntensity : 0;
 
-    if (this.headlightsEnabled) {
-      this.setHeadlightVisibility(true);
-    } else {
+    if (!this.headlightsEnabled) {
       this.headlightCurrentIntensity = 0;
       this.applyHeadlightState(0);
+    }
+
+    if (DEBUG_PERFORMANCE) {
+      console.info('[perf] toggleHeadlights', {
+        enabled: this.headlightsEnabled,
+        durationMs: Number((performance.now() - startTime).toFixed(2))
+      });
     }
   }
 
@@ -623,20 +629,13 @@ export class Rover {
 
     for (const light of this.headlights) {
       light.intensity = appliedIntensity;
-      light.visible = isVisible;
+      light.visible = true;
     }
 
     for (const lens of this.headlightLenses) {
       lens.material.emissiveIntensity = ratio * 8.5 * shimmer;
       lens.material.emissive.setHex(isVisible ? COLORS.headlight : 0x000000);
       lens.material.color.setHex(isVisible ? COLORS.headlight : 0x1a242d);
-    }
-
-  }
-
-  setHeadlightVisibility(visible) {
-    for (const light of this.headlights) {
-      light.visible = visible;
     }
 
   }
@@ -870,12 +869,10 @@ export class Rover {
       );
       light.name = `HeadlightBeam_${index + 1}`;
       light.position.set(x, 0.12, -0.08);
-      light.visible = false;
-      light.castShadow = true;
-      light.shadow.mapSize.set(512, 512);
-      light.shadow.camera.near = 0.2;
-      light.shadow.camera.far = ROVER.headlightDistance;
-      light.shadow.normalBias = 0.02;
+      // Keep the SpotLights resident at zero intensity so toggling F does not
+      // trigger shader or shadow-map setup during gameplay.
+      light.visible = true;
+      light.castShadow = false;
 
       const target = new THREE.Object3D();
       target.name = `HeadlightTarget_${index + 1}`;

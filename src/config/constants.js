@@ -69,6 +69,8 @@ export const COLLECTION = {
   dropDistance: 0.18
 };
 
+export const DEBUG_PERFORMANCE = false;
+
 export const GAME_STATES = Object.freeze({
   LOADING: 'LOADING',
   MENU: 'MENU',
