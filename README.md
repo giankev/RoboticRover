@@ -113,9 +113,10 @@ npm.cmd run build
 The longer technical report and user manual is available here:
 
 - [docs/Report.md](docs/Report.md)
+- [docs/Final_Checklist.md](docs/Final_Checklist.md)
 
 ## Deployment / GitHub Pages
 
 Live demo: TODO add GitHub Pages link after deployment.
 
-For deployment, run `npm run build` and publish the Vite output according to the repository's GitHub Pages setup.
+For deployment, run `npm run build` and publish the Vite `dist/` output according to the repository's GitHub Pages setup. `vite.config.js` currently uses `base: './'` so the built app can run from a GitHub Pages subfolder without hard-coding an unknown repository name. If your deployment requires an absolute Vite base, change it to `"/REPO_NAME/"` before publishing.
