@@ -13,12 +13,17 @@ The rover includes headlights, multiple camera modes, a hierarchical robotic arm
 
 ## Screenshots
 
-No screenshots are committed yet. See [docs/screenshots/README.md](docs/screenshots/README.md) for the required capture list:
+### Mission Menu
 
-- `overview.png`: rover inside the ice cave.
-- `scanner.png`: scanner effect aimed at a sample.
-- `collection.png`: robotic arm collecting or depositing a sample.
-- `menu.png` optional: clean Easy/Hard/Restart menu.
+![Mission Menu](docs/screenshots/menu1.png)
+
+### Rover Exploration
+
+![Rover inside the ice cave](docs/screenshots/rover.png)
+
+### Sample Scan / Collection
+
+![Sample interaction](docs/screenshots/sample1.png)
 
 ## Gameplay / Objective
 

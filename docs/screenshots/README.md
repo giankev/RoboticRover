@@ -1,13 +1,12 @@
-# Screenshot Checklist
+# Screenshots
 
-Add final presentation screenshots to this folder before deployment.
+Final presentation screenshots for the README and project report are stored in this folder.
 
-Recommended files:
+Available files:
 
-- `overview.png`: rover visible inside the ice cave, showing the cave scale, crystals, path, lighting, and HUD.
-- `scanner.png`: scanner beam/ring effect aimed at a sample target after pressing `X`.
-- `collection.png`: robotic arm collecting a sample or depositing it into the inventory container after pressing `E`.
-- `menu.png` optional: clean menu/result overlay showing only Easy Mission, Hard Mission, and Restart Mission.
+- `menu1.png`: mission menu with Easy Mission, Hard Mission, and Restart Mission options.
+- `rover.png`: rover exploration view inside the ice cave.
+- `sample1.png`: sample scan / collection interaction view.
 
 Suggested capture settings:
 
