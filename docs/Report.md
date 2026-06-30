@@ -2,7 +2,7 @@
 
 ## Introduction
 
-CryoRover is an interactive real-time graphics project set in an icy cave on Europa. The player controls a scientific rover, explores the cave, scans glowing mineral targets, and collects sample fragments with a robotic arm mounted on the rover.
+CryoRover is an interactive real-time graphics project set in a remote icy cave. The player controls a scientific rover, explores the cave, scans glowing mineral targets, and collects sample fragments with a robotic arm mounted on the rover.
 
 The project is designed for an Interactive Computer Graphics course. Its focus is not only visual appearance, but also the clear use of hierarchical modeling, local transformations, manual JavaScript animation, lighting, texture mapping, user interaction, and a coherent playable mission.
 
@@ -38,7 +38,7 @@ The project does not use React, TypeScript, a physics engine, ray tracing, impor
 
 ## Scene and Theme
 
-The scene represents a cold science-fiction ice cave on Europa. The environment is not an empty plane: it includes a shaped ground path, high cave walls, a ceiling, stalactites, stalagmites, ground-to-ceiling ice columns, emissive crystals, collectible sample fragments, fog, and glossy frozen patches.
+The scene represents a cold science-fiction ice cave. The environment is not an empty plane: it includes a shaped ground path, high cave walls, a ceiling, stalactites, stalagmites, ground-to-ceiling ice columns, emissive crystals, collectible sample fragments, fog, and glossy frozen patches.
 
 The cave is organized as an explorable route with a wider start area, corridor sections, and a deeper chamber. Six sample target locations are distributed along the cave route. Each target pairs a glowing crystal with a smaller collectible fragment placed at a reachable pickup anchor.
 
@@ -135,7 +135,7 @@ Glossy frozen puddles use a low-roughness `MeshPhysicalMaterial` with clearcoat 
 
 ## Lighting and Atmosphere
 
-The lighting rig is designed for a cold Europa cave mood while keeping gameplay readable:
+The lighting rig is designed for a cold remote ice cave mood while keeping gameplay readable:
 
 - hemisphere and ambient lights provide soft fill;
 - one directional light adds stable shadows and shape;

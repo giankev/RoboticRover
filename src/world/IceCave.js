@@ -4,6 +4,9 @@ import { CollisionSystem } from './CollisionSystem.js';
 import { createCaveMaterials } from './MaterialFactory.js';
 import { getProceduralTextures } from './ProceduralTextures.js';
 
+const FLOOR_SEGMENTS_Z = 80;
+const FLOOR_SEGMENTS_X = 24;
+
 export class IceCave {
   constructor() {
     this.group = new THREE.Group();
@@ -162,10 +165,11 @@ export class IceCave {
 
   createGround() {
     const geometry = createStripGeometry({
-      zSegments: WORLD.groundSegmentsZ,
-      xSegments: WORLD.groundSegmentsX,
+      zSegments: FLOOR_SEGMENTS_Z,
+      xSegments: FLOOR_SEGMENTS_X,
       minZ: WORLD.caveMinZ,
       maxZ: WORLD.caveMaxZ,
+      faceUp: true,
       getHalfWidth: (z) => this.getCaveHalfWidth(z),
       getY: (x, z, edgeFactor) =>
         Math.sin(x * 0.48) * 0.08 +
@@ -199,7 +203,7 @@ export class IceCave {
       sheet.rotation.y = this.randomRange(0, Math.PI * 2);
       sheet.scale.set(1, 1, this.randomRange(0.52, 1.22));
       sheet.material.color.offsetHSL(this.randomRange(-0.015, 0.02), 0, this.randomRange(-0.08, 0.08));
-      sheet.receiveShadow = true;
+      sheet.receiveShadow = false;
       this.group.add(sheet);
 
       if (index % 2 === 0) {
@@ -240,7 +244,7 @@ export class IceCave {
       patch.position.set(puddle.x, 0.17, puddle.z);
       patch.rotation.y = puddle.rotation;
       patch.scale.z = puddle.stretch;
-      patch.receiveShadow = true;
+      patch.receiveShadow = false;
       // Shared PBR gloss only: no reflector, render target, or collision volume.
       this.group.add(patch);
     });
@@ -252,13 +256,14 @@ export class IceCave {
       xSegments: 1,
       minZ: WORLD.caveMinZ + 12,
       maxZ: WORLD.caveMaxZ - 7,
+      faceUp: true,
       getHalfWidth: () => 4.2,
       getY: () => 0.08
     });
 
     const path = new THREE.Mesh(pathGeometry, this.materials.path);
     path.name = 'ReadableSnowPath';
-    path.receiveShadow = true;
+    path.receiveShadow = false;
     this.group.add(path);
 
     const startPad = new THREE.Mesh(
@@ -982,6 +987,7 @@ function createStripGeometry({
   xSegments,
   minZ,
   maxZ,
+  faceUp = false,
   getHalfWidth,
   getY
 }) {
@@ -1004,7 +1010,7 @@ function createStripGeometry({
     }
   }
 
-  addGridIndices(indices, zSegments, xSegments);
+  addGridIndices(indices, zSegments, xSegments, faceUp);
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
@@ -1217,7 +1223,7 @@ function alternatingSign(index) {
   return index % 2 === 0 ? 1 : -1;
 }
 
-function addGridIndices(indices, rows, columns) {
+function addGridIndices(indices, rows, columns, faceUp = false) {
   const stride = columns + 1;
 
   for (let row = 0; row < rows; row += 1) {
@@ -1226,7 +1232,12 @@ function addGridIndices(indices, rows, columns) {
       const b = a + 1;
       const c = a + stride;
       const d = c + 1;
-      indices.push(a, c, b, b, c, d);
+
+      if (faceUp) {
+        indices.push(a, b, c, b, d, c);
+      } else {
+        indices.push(a, c, b, b, c, d);
+      }
     }
   }
 }

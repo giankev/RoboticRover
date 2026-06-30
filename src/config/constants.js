@@ -82,7 +82,7 @@ export const GAME_STATES = Object.freeze({
 });
 
 export const MISSION = Object.freeze({
-  // Debug target: restore this to 6 for the final six-sample mission.
+  // Mission objective count used by both difficulty profiles.
   requiredSamples: 2
 });
 

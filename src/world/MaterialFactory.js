@@ -10,28 +10,23 @@ export function createCaveMaterials(textures) {
   const { caveIce, ground, rock } = textures;
 
   return {
-    ground: new THREE.MeshPhysicalMaterial({
-      color: 0xc3edf0,
+    ground: new THREE.MeshStandardMaterial({
+      color: 0xd6efee,
       map: ground.map,
       normalMap: ground.normalMap,
-      normalScale: new THREE.Vector2(0.35, 0.35),
+      normalScale: new THREE.Vector2(0.16, 0.16),
       roughnessMap: ground.roughnessMap,
-      metalnessMap: ground.metalnessMap,
-      roughness: 0.68,
-      metalness: 0.02,
-      clearcoat: 0.18,
-      clearcoatRoughness: 0.62
+      roughness: 0.78,
+      metalness: 0
     }),
-    iceSheet: new THREE.MeshPhysicalMaterial({
+    iceSheet: new THREE.MeshStandardMaterial({
       color: 0xb8edf1,
       map: caveIce.map,
       normalMap: caveIce.normalMap,
-      normalScale: new THREE.Vector2(0.18, 0.18),
+      normalScale: new THREE.Vector2(0.1, 0.1),
       roughnessMap: caveIce.roughnessMap,
-      roughness: 0.28,
+      roughness: 0.42,
       metalness: 0.02,
-      clearcoat: 0.52,
-      clearcoatRoughness: 0.22,
       transparent: true,
       opacity: 0.38,
       depthWrite: false,

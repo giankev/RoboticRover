@@ -20,13 +20,14 @@ export function getProceduralTextures() {
     }),
     ground: createSurfaceSet({
       seed: 29,
-      base: '#5f98aa',
-      detail: '#b9e4e9',
-      shadow: '#244a63',
-      repeat: [9, 18],
+      base: '#7fb3c0',
+      detail: '#d3f1f0',
+      shadow: '#3a6172',
+      repeat: [10, 24],
       roughness: 190,
       metalness: 4,
-      veins: false
+      veins: false,
+      cracks: true
     }),
     rock: createSurfaceSet({
       seed: 41,
@@ -108,10 +109,20 @@ function createSurfaceSet({
   metalness,
   veins = false,
   scratches = false,
+  cracks = false,
   emissive = null
 }) {
   return {
-    map: createColorTexture({ seed, base, detail, shadow, repeat, veins, scratches }),
+    map: createColorTexture({
+      seed,
+      base,
+      detail,
+      shadow,
+      repeat,
+      veins,
+      scratches,
+      cracks
+    }),
     normalMap: createNormalTexture(seed + 101, repeat),
     roughnessMap: createMaskTexture(seed + 211, repeat, roughness),
     metalnessMap: createMaskTexture(seed + 307, repeat, metalness),
@@ -128,7 +139,16 @@ function createSurfaceSet({
   };
 }
 
-function createColorTexture({ seed, base, detail, shadow, repeat, veins, scratches }) {
+function createColorTexture({
+  seed,
+  base,
+  detail,
+  shadow,
+  repeat,
+  veins,
+  scratches,
+  cracks
+}) {
   return createCanvasTexture(repeat, THREE.SRGBColorSpace, (context, size) => {
     context.fillStyle = base;
     context.fillRect(0, 0, size, size);
@@ -173,6 +193,53 @@ function createColorTexture({ seed, base, detail, shadow, repeat, veins, scratch
         context.moveTo(0, y);
         context.lineTo(size, y + (random() - 0.5) * 8);
         context.stroke();
+      }
+    }
+
+    if (cracks) {
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      for (let index = 0; index < 28; index += 1) {
+        const startX = random() * size;
+        const startY = random() * size;
+        const segmentCount = 3 + Math.floor(random() * 4);
+        let x = startX;
+        let y = startY;
+
+        context.globalAlpha = 0.2 + random() * 0.16;
+        context.strokeStyle = shadow;
+        context.lineWidth = 0.45 + random() * 0.75;
+        context.beginPath();
+        context.moveTo(x, y);
+
+        for (let segment = 0; segment < segmentCount; segment += 1) {
+          x += (random() - 0.5) * size * 0.28;
+          y += (random() - 0.5) * size * 0.22;
+          context.lineTo(x, y);
+        }
+
+        context.stroke();
+
+        context.globalAlpha = 0.08 + random() * 0.08;
+        context.strokeStyle = detail;
+        context.lineWidth = 1.2 + random() * 1.6;
+        context.stroke();
+      }
+
+      for (let index = 0; index < 18; index += 1) {
+        context.globalAlpha = 0.08 + random() * 0.12;
+        context.fillStyle = detail;
+        context.beginPath();
+        context.ellipse(
+          random() * size,
+          random() * size,
+          4 + random() * 12,
+          1.5 + random() * 5,
+          random() * Math.PI,
+          0,
+          Math.PI * 2
+        );
+        context.fill();
       }
     }
 

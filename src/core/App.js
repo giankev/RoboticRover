@@ -434,8 +434,8 @@ export class App {
     this.gameOverlay.progressLabel.hidden = !isLoading;
 
     if (state === GAME_STATES.LOADING) {
-      this.gameOverlay.eyebrow.textContent = 'EUROPA EXPEDITION';
-      this.gameOverlay.title.textContent = 'CryoRover - Europa Ice Cave Explorer';
+      this.gameOverlay.eyebrow.textContent = 'ICE CAVE EXPEDITION';
+      this.gameOverlay.title.textContent = 'CryoRover - Interactive Ice Cave Explorer';
       this.gameOverlay.message.textContent = 'Map loading...';
       this.gameOverlay.progressFill.style.width = `${this.game.loadingProgress}%`;
       this.gameOverlay.progressLabel.textContent = this.game.loadingLabel;
@@ -443,8 +443,8 @@ export class App {
     }
 
     if (state === GAME_STATES.MENU) {
-      this.gameOverlay.eyebrow.textContent = 'EUROPA EXPEDITION';
-      this.gameOverlay.title.textContent = 'CryoRover - Europa Ice Cave Explorer';
+      this.gameOverlay.eyebrow.textContent = 'ICE CAVE EXPEDITION';
+      this.gameOverlay.title.textContent = 'CryoRover - Interactive Ice Cave Explorer';
       const sampleLabel = MISSION.requiredSamples === 1 ? 'sample' : 'samples';
       this.gameOverlay.message.textContent = `Scan and secure ${MISSION.requiredSamples} mineral ${sampleLabel} before the mission timer expires.`;
       return;

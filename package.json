@@ -1,7 +1,7 @@
 {
-  "name": "cryorover-europa-ice-cave-explorer",
+  "name": "cryorover-ice-cave-explorer",
   "version": "0.1.0",
-  "description": "CryoRover - Interactive Europa Ice Cave Explorer built with Vite, JavaScript, and Three.js.",
+  "description": "CryoRover - Interactive Ice Cave Explorer built with Vite, JavaScript, and Three.js.",
   "private": true,
   "type": "module",
   "scripts": {
