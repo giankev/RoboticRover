@@ -936,6 +936,8 @@ export class IceCave {
       sample.group.quaternion.copy(sample.homeQuaternion);
       sample.group.scale.copy(sample.homeScale);
       sample.group.visible = true;
+      sample.mesh.visible = true;
+      sample.light.visible = true;
       sample.group.userData.scanState = 'unscanned';
       sample.group.userData.collectionState = 'uncollected';
       sample.group.userData.collected = false;

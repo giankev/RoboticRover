@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COLLECTION, DEBUG_PERFORMANCE } from '../config/constants.js';
+import { COLLECTION, DEBUG_DEPOSIT_PERF } from '../config/constants.js';
 
 export class SampleCollectionSystem {
   constructor({
@@ -16,6 +16,7 @@ export class SampleCollectionSystem {
 
     this.isCollecting = false;
     this.state = 'idle';
+    this.depositPhase = 'idle';
     this.statusLabel = 'Ready';
     this.activeTarget = null;
     this.samplePosition = new THREE.Vector3();
@@ -62,14 +63,15 @@ export class SampleCollectionSystem {
 
     this.activeTarget = null;
     this.state = 'idle';
+    this.depositPhase = 'idle';
     this.statusLabel = 'Ready';
     return true;
   }
 
   async playCollectionSequence(target) {
     const sampleObject = target.sample.group;
-    const profiler = DEBUG_PERFORMANCE
-      ? createCollectionProfiler(target.sample.id ?? target.mesh.name ?? 'sample')
+    const profiler = DEBUG_DEPOSIT_PERF
+      ? createDepositProfiler(target.sample.id ?? target.mesh.name ?? 'sample')
       : null;
     let sampleAttachment = null;
     let sampleAttached = false;
@@ -86,6 +88,7 @@ export class SampleCollectionSystem {
     try {
       profiler?.mark('start');
       this.onCollectionStart();
+      this.setDepositPhase('collection start');
       this.getSampleWorldPosition(target, this.samplePosition);
 
       await this.rover.alignToScanTarget(
@@ -150,13 +153,16 @@ export class SampleCollectionSystem {
       await this.rover.openArmGripper(COLLECTION.releaseGripperDuration);
 
       this.setState('releasing', 'Releasing sample.');
-      profiler?.mark('before-release-drop');
+      this.setDepositPhase('detach sample');
+      profiler?.mark('detach sample');
       this.rover.releaseSampleForDrop(sampleObject);
-      profiler?.mark('after-release-drop');
+      profiler?.mark('sample detached');
       sampleAttached = false;
       sampleReleased = true;
 
       this.setState('falling', 'Storing sample.');
+      this.setDepositPhase('start fall tween');
+      profiler?.mark('start fall tween');
       const fallCompleted = await this.rover.animateSampleFallIntoContainer(
         sampleObject
       );
@@ -166,22 +172,29 @@ export class SampleCollectionSystem {
       }
       profiler?.mark('sample-fall-complete');
 
-      profiler?.mark('before-deposit');
+      this.setDepositPhase('hide/store sample');
+      profiler?.mark('hide/store sample');
       this.rover.depositSampleInContainer(sampleObject);
-      profiler?.mark('after-deposit');
+      profiler?.mark('sample stored');
       sampleReleased = false;
       sampleDeposited = true;
 
+      this.setDepositPhase('mark collected');
+      profiler?.mark('mark collected');
       this.setTargetCollectionState(target, 'collected');
       if (target.scanMarker) {
         target.scanMarker.visible = false;
       }
+      profiler?.mark('collection state updated');
 
       this.setState('retracting', 'Retracting arm.');
       await this.rover.animateArmToContainer();
 
       this.setState('closing-door', 'Closing hatch.');
+      this.setDepositPhase('door close');
+      profiler?.mark('door close');
       await this.rover.closeContainerDoor();
+      profiler?.mark('door closed');
       doorOpened = false;
 
       this.setState('returning', 'Returning arm.');
@@ -224,10 +237,16 @@ export class SampleCollectionSystem {
 
       this.rover.setScannerActive(false);
       this.activeTarget = null;
+      this.setDepositPhase('update HUD');
+      profiler?.mark('update HUD');
+      this.onCollectionEnd({ completed, sampleDeposited, status: this.statusLabel });
+      profiler?.mark('HUD updated');
+      this.setDepositPhase('unlock controls');
       this.isCollecting = false;
       this.state = 'idle';
-      this.onCollectionEnd({ completed, sampleDeposited, status: this.statusLabel });
+      profiler?.mark('unlock controls');
       profiler?.finish({ completed, sampleDeposited, status: this.statusLabel });
+      this.depositPhase = 'idle';
     }
   }
 
@@ -314,6 +333,10 @@ export class SampleCollectionSystem {
     this.statusLabel = label;
   }
 
+  setDepositPhase(phase) {
+    this.depositPhase = phase;
+  }
+
   captureSampleTransform(sampleObject) {
     return {
       parent: sampleObject.parent,
@@ -383,27 +406,23 @@ export class SampleCollectionSystem {
 
 class CollectionAbort extends Error {}
 
-function createCollectionProfiler(sampleId) {
+function createDepositProfiler(sampleId) {
   const startTime = performance.now();
   let previousTime = startTime;
-  const marks = [];
 
   return {
     mark(label) {
       const now = performance.now();
-      marks.push({
-        label,
-        stepMs: Number((now - previousTime).toFixed(2)),
-        totalMs: Number((now - startTime).toFixed(2))
-      });
+      const stepMs = Number((now - previousTime).toFixed(2));
+      const totalMs = Number((now - startTime).toFixed(2));
+      console.info(`[DEPOSIT] ${label}: +${stepMs}ms total=${totalMs}ms sample=${sampleId}`);
       previousTime = now;
     },
     finish(summary) {
       const totalMs = Number((performance.now() - startTime).toFixed(2));
-      console.groupCollapsed(`[perf] collection:${sampleId} ${totalMs}ms`);
-      console.table(marks);
-      console.info('[perf] collection summary', summary);
-      console.groupEnd();
+      console.info(
+        `[DEPOSIT] finish: total=${totalMs}ms completed=${summary.completed} deposited=${summary.sampleDeposited} status="${summary.status}"`
+      );
     }
   };
 }

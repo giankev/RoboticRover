@@ -393,9 +393,31 @@ export class Rover {
   depositSampleInContainer(sampleObject) {
     this.sampleStorageGroup.add(sampleObject);
     sampleObject.userData.heldByGripper = false;
-    sampleObject.visible = false;
+    sampleObject.visible = true;
+    this.setStoredSampleRenderState(sampleObject, false);
     sampleObject.position.set(0, 0, 0);
     this.sampleDepositCount += 1;
+  }
+
+  setStoredSampleRenderState(sampleObject, visible) {
+    const stack = [...sampleObject.children];
+
+    while (stack.length > 0) {
+      const child = stack.pop();
+
+      if (child.isMesh) {
+        child.visible = visible;
+      } else if (child.isLight) {
+        // Keep the light object visible so Three.js keeps the same shader light
+        // count during gameplay; only its contribution is disabled.
+        child.visible = true;
+        if (!visible) {
+          child.intensity = 0;
+        }
+      }
+
+      stack.push(...child.children);
+    }
   }
 
   alignToScanTarget(worldPosition, duration = 640) {

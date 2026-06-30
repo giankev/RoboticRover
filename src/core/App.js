@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import * as TWEEN from '@tweenjs/tween.js';
-import { DEBUG_PERFORMANCE, GAME_STATES, MISSION } from '../config/constants.js';
+import {
+  DEBUG_DEPOSIT_PERF,
+  DEBUG_PERFORMANCE,
+  GAME_STATES,
+  MISSION
+} from '../config/constants.js';
 import { InputController } from '../interaction/InputController.js';
 import { SampleCollectionSystem } from '../interaction/SampleCollectionSystem.js';
 import { ScannerSystem } from '../interaction/ScannerSystem.js';
@@ -117,6 +122,12 @@ export class App {
   }
 
   reportFrameGap(delta) {
+    if (DEBUG_DEPOSIT_PERF && this.collector?.isCollecting && delta > 0.12) {
+      const gapMs = Number((delta * 1000).toFixed(1));
+      const phase = this.collector.depositPhase || this.collector.state;
+      console.warn(`[DEPOSIT] frame gap: ${gapMs}ms phase=${phase}`);
+    }
+
     if (!DEBUG_PERFORMANCE || delta <= 0.12) {
       return;
     }

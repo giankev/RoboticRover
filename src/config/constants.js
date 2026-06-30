@@ -70,6 +70,7 @@ export const COLLECTION = {
 };
 
 export const DEBUG_PERFORMANCE = false;
+export const DEBUG_DEPOSIT_PERF = false;
 
 export const GAME_STATES = Object.freeze({
   LOADING: 'LOADING',
