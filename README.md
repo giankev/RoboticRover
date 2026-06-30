@@ -1,13 +1,13 @@
-# CryoRover - Interactive Europa Ice Cave Explorer
+# CryoRover - Interactive Ice Cave Explorer
 
-CryoRover is an interactive 3D graphics project built with Three.js/WebGL. The player controls a robotic rover inside an icy cave on Europa, explores the cave route, scans mineral samples, and collects them before the mission timer runs out.
+CryoRover is an interactive 3D graphics project built with Three.js/WebGL. The player controls a robotic rover inside an icy cave, explores the cave route, scans mineral samples, and collects them before the mission timer runs out.
 
 The rover includes headlights, multiple camera modes, a hierarchical robotic arm, a scanner, and an onboard sample storage container. The project demonstrates hierarchical modeling, local transformations, texture/material usage, lighting, user interaction, and JavaScript-authored animations. No imported animation clips are used.
 
 ## Project Overview
 
 - Real-time 3D browser application built with JavaScript, Three.js, and Vite.
-- Procedural Europa cave with ice walls, ceiling, stalactites, stalagmites, crystals, fog, and glossy frozen patches.
+- Procedural  cave with ice walls, ceiling, stalactites, stalagmites, crystals, fog, and glossy frozen patches.
 - Playable mission loop with Easy/Hard difficulty, compact HUD, timer, scanner, sample collection, and final mission states.
 - Complex procedural rover model with wheels, headlights, camera mast, antenna, inventory container, and articulated robotic arm.
 
@@ -33,7 +33,7 @@ Current mission configuration:
 
 ## Main Features
 
-- Procedural Europa ice cave with an explorable route and enclosed cave volume.
+- Procedural  ice cave with an explorable route and enclosed cave volume.
 - Hierarchical rover model built from Three.js primitives.
 - Robotic arm with local joint rotations, animated gripper, and sample hold anchor.
 - Scanner system with rover alignment, arm-assisted scan pose, beam/ring effect, and per-target scanned state.
@@ -120,7 +120,7 @@ npm.cmd run preview
 - PBR-style `MeshStandardMaterial` and `MeshPhysicalMaterial` surfaces with procedural texture maps.
 - Shadow mapping from the main cave light; rover headlights remain dynamic spotlights without extra headlight shadow maps for smoother toggling.
 - Emissive materials and small point lights for crystals and collectible samples.
-- Fog and cold blue lighting for Europa cave atmosphere.
+- Fog and cold blue lighting for  cave atmosphere.
 - Lightweight glossy puddle/reflection approximation through material response, not planar ray-traced reflections.
 - Manual JavaScript animation using position, rotation, scale, object parenting, and tween.js easing.
 
