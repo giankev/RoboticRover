@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/final-project-giankev/',
+  base: '/RoboticRover/',
   plugins: [
     {
       name: 'cryorover-vite8-dev-client-flags',
